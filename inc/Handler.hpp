@@ -44,12 +44,12 @@ class Handler
 	void	init_server();
 	// Faire la boucle principale de surveillance des sockets grace
 	void	launch_server();
-	void	test();
+	// void	test(int	new_connexion, int ensemble, struct sockaddr_in new_connexion_info);
 	private:
 
 	//Stockage des objets retourne par Paring (conteneur ?)
-	struct	sockaddr_in	listen_connexion[2]; // Directement stocke ca dans les objets retourne par le Parsing ?
-	int					socket_fd[2];
+	struct	sockaddr_in	listen_connexion; // Directement stocke ca dans les objets retourne par le Parsing ?
+	int					socket_fd;// vector pour gerer dynamiquement
 	// int	error_code; // ? Pour le retour de notre programme si erreur rencontrer
 };
 

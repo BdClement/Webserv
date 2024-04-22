@@ -17,6 +17,7 @@ GREEN = \033[0;32m
 SRC_DIR = 		./src
 SRCS =			$(SRC_DIR)/main.cpp\
 				$(SRC_DIR)/Handler.cpp\
+				$(SRC_DIR)/utils.cpp\
 
 ## OBJECTS
 

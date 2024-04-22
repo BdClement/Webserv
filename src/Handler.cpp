@@ -6,11 +6,12 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 12:55:53 by clbernar          #+#    #+#             */
-/*   Updated: 2024/04/17 17:54:44 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/04/22 21:49:44 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Handler.hpp"
+#include <unistd.h> // Pour sleep
 
 Handler::Handler()
 {
@@ -38,112 +39,29 @@ Handler& Handler::operator=(Handler const & equal)
 	return *this;
 }
 
+// Les ports en dessous de 1024 ne peuvent pas etre bind() car l'OS a une politique de securite
+// concernant ses ports la qui sont consideres comme reserves ou bien connus.
+// Cette logique est a faire de maniere dynamique autant de fois que le fichier de configuration le demande (cf Notion)
 void	Handler::init_server()
 {
-	std::cout<<"Fonction init_server appelee !"<<std::endl;
-	// for (int  i = 0; i < 2; i++)
-	// {
-		// Creation de la structure representant la connexion
-		listen_connexion[0].sin_family = AF_INET;
-		listen_connexion[0].sin_port = htons(80);
-		if (inet_pton(AF_INET, "127.0.0.1", &(listen_connexion[0].sin_addr)) == 0)
-			std::cout<<"IP conversion failed"<<std::endl;
-		std::cout<<"Retour de conversion = "<<listen_connexion[0].sin_addr.s_addr<<std::endl;
-		// Creation de la socket
-		socket_fd[0] = socket(listen_connexion[0].sin_family, SOCK_STREAM, 0);
-		if (socket_fd[0] == -1)
-		{
-			std::cout<<"Socket creation failed"<<std::endl;
-			// Checker errno ?
-		}
-		// Liason de la socket cree a l'adresse IP et au port adequat
-		if (bind(socket_fd[0], (struct sockaddr *)&listen_connexion[0] , sizeof(listen_connexion[0])) == -1)
-		{
-			std::cout<<"Bind failed"<<std::endl;
-			// Checker errno ?
-		}
-		else
-			std::cout<<"Bind successful"<<std::endl;
-		// Mise en ecoute des sockets d'ecoutes
-		if (listen(socket_fd[0], 20) == -1)// 20 connexion maximum en simultanne par defaut
-		{
-			std::cout<<"Listening failed"<<std::endl;
-			// Checker errno ?
-		}
-	// }
-}
+	// CREATE LISTEN_SOCKETS
+	std::cout<<"Creations des sockets d'ecoutes specifiees lors de la configuration"<<std::endl;
 
-// Gerer le nombre max de fd a surveiller ??
-void	Handler::launch_server()
-{
-	std::cout<<"Fonction launch_server appelee !"<<std::endl;
-	// Creation de la logique de Surveillance grace a epoll()
-	int	epoll_fd = epoll_create1(0);
-	// Creation de la structure d'evenements commune aux socket
-	struct epoll_event	event;
-	event.events = EPOLLIN; // Ajouter EPOLLOUT EPOLLERR
-	event.data.fd = socket_fd[0];
-	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, socket_fd[0], &event) == -1)
-	{
-		std::cout<<" EPOLL_CTL_ADD failed"<<std::endl;
-		// Checker errno ?
-	}
-	else
-		std::cout<<"OK"<<std::endl;
-	while (1)
-	{
-		std::cout<<"O1"<<std::endl;
-		struct epoll_event	events[20];
-		//
-		std::cout<<"OK2"<<std::endl;
-		int	num = epoll_wait(epoll_fd, events, 20, 5);
-		std::cout<<"num = "<<num<<std::endl;
-		if (num == -1)
-		{
-			std::cout<<"Wait failed"<<std::endl;
-			//errno
-		}
-		// for (int i = 0; i < num; ++i)
-		// {
-		// 	if (events[i].data.fd == socket_fd[0])
-		// 	{
-		// 		std::cout<<"Connexion entrante recu"<<std::endl;
-		// 		struct sockaddr_in	client_addr;
-		// 		socklen_t client_len = sizeof(client_addr);
-		// 		int client_fd = accept(socket_fd[0], (struct sockaddr *)&client_addr, &client_len);
-		// 		if (client_fd == -1)
-		// 			std::cout<<"Accept failed"<<std::endl;
-		// 		else
-		// 			std::cout<<"Connexion entrante etablie"<<std::endl;
-		// 	}
-		// }
-	}
-}
-
-/////////////////////////////////////////////////////////////////////
-// Pourquoi les ports en dessous 1024 ne peuvent pas etre bind()
-// Comprende la gestion d'evenement a partir de ce modele.
-
-
-void	Handler::test()
-{
-	// Creation de la structure representant la connexion
-	struct sockaddr_in	connexion;
-	connexion.sin_family = AF_INET;
-	connexion.sin_port = htons(1025); // Changement avec 8000 et bin successful ??
-	if (inet_pton(AF_INET, "127.0.0.1", &(connexion.sin_addr)) == 0)
-		std::cout<<"IP conversion failed"<<std::endl;
-	std::cout<<"IP convertie = "<<connexion.sin_addr.s_addr<<" /// port au format reseau = "<<connexion.sin_port<<std::endl;
+	// Creation de structure representant des blocs server necessaire car nous aurons besoin
+	// de ces structures pour utiliser des fonctions de gestion de socket par la suite telle que bind()
+	listen_connexion.sin_family = AF_INET;
+	listen_connexion.sin_port = htons(1025);// Port specifie
+	listen_connexion.sin_addr.s_addr = htonl(convert_addr("127.0.0.1"));// IP Specifie
 
 	// Creation de la socket
-	int socket_fd = socket(connexion.sin_family, SOCK_STREAM, 0);
+	socket_fd = socket(listen_connexion.sin_family, SOCK_STREAM, 0);
 	if (socket_fd == -1)
 		std::cout<<"Socket creation failed"<<std::endl;
 	else
 		std::cout<<"Socket_fd = "<<socket_fd<<std::endl;
 
 	// Liason de la socket avec les infromation de connexion de la strucutre
-	if (bind(socket_fd, (struct sockaddr *)&connexion , sizeof(connexion)) == -1)
+	if (bind(socket_fd, (struct sockaddr *)&listen_connexion , sizeof(listen_connexion)) == -1)
 	{
 		std::cout<<"Bind failed : "<<strerror(errno)<<std::endl;
 	}
@@ -153,14 +71,22 @@ void	Handler::test()
 	// Mise en ecoute de la socket d'ecoute
 	if (listen(socket_fd, 20) == -1)// 20 connexion maximum en simultanne par defaut
 		std::cout<<"Listening failed : "<<strerror(errno)<<std::endl;
+}
 
 
-
-
+// Gerer le nombre max de fd a surveiller ??
+// Double connexion via google-chrome pour une connexion entrante ??
+void	Handler::launch_server()
+{
 	// Creation de la logique de surveillance des sockets
 	int	epoll_fd = epoll_create1(0); // A checker
 
 	// Creation de la structure d'evenements commune aux sockets
+	// Cette structure sert a specifie a quels evenements la socket doit reagir ou non
+	// EPOLLIN disponibilite pour la lecture
+	// EPOLLOUT disponibilite pour l'ecriture
+	// EPOLLERR pour les erreurs rencontrees
+	// Elle peut eventuellement etre utilise sur plusieurs sockets qui ont le meme objectif
 	struct epoll_event	event;
 	event.events = EPOLLIN;
 	event.data.fd = socket_fd;
@@ -170,14 +96,65 @@ void	Handler::test()
 	// Boucle d'evenement
 	while (1)
 	{
-		struct epoll_event	events[20];
-		int	num = epoll_wait(epoll_fd, events, 20, 5);
-		if (num != 0)
-			std::cout<<"num = "<<num<<std::endl;
-		if (num == -1)
+		struct epoll_event	events[20];// Taille a debattre
+		int	num_event = epoll_wait(epoll_fd, events, 20, 5);
+		if (num_event == -1)
 		{
 			std::cout<<"Wait failed"<<std::endl;
 			//errno
+			break;
+		}
+		if (num_event >= 0)
+		{
+			std::cout<<"num_event = "<<num_event<<std::endl;
+			for (int i = 0; i < num_event; ++i)
+			{
+				// Logique de separtion sockets d'ecoutes / sockets de communiactation
+				std::cout<<"Connexion entrante recue"<<std::endl;
+				// Logique de socket d'ecoute
+				if (events[i].data.fd == socket_fd)
+				{
+					struct sockaddr_in	client_addr;
+					socklen_t client_len = sizeof(client_addr);
+					int client_fd = accept(socket_fd, (struct sockaddr *)&client_addr, &client_len);
+					if (client_fd == -1)
+						std::cout<<"Accept failed"<<std::endl;
+					else
+					{
+						std::cout<<"Connexion entrante etablie sur la socket "<< client_fd<<std::endl;
+						sleep(3);
+						struct epoll_event	event_com;
+						event_com.events = EPOLLIN | EPOLLOUT | EPOLLERR;
+						event_com.data.fd = client_fd;
+						if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event_com) == -1)
+							std::cout<<" EPOLL_CTL_ADD failed (dans test): "<<strerror(errno)<<std::endl;
+						else
+							std::cout<<"Ajout de la socket de communication a epoll_fd"<<std::endl;
+					}
+				}
+				else // Logique de socket de communication
+				{
+					std::cout<<"Donnees recu sur la socket de communication "<<events[i].data.fd<<std::endl;
+					sleep(1);
+					// Logique de lecture de la requete recue
+				}
+				// this->test(client_fd, epoll_fd, client_addr);
+			}
 		}
 	}
 }
+
+/////////////////////////////////////////////////////////////////////
+// Classe : socket d'ecoute, socket de cmmunication , request, response
+
+// void	Handler::test(int	new_connexion, int ensemble, struct sockaddr_in new_connexion_info)
+// {
+// 	(void)new_connexion_info;
+// 	// Declaration de la structure d'evenement lie a cette connexion entrante
+// 	struct epoll_event	event;
+// 	event.events = EPOLLIN | EPOLLOUT | EPOLLERR;
+// 	event.data.fd = new_connexion;
+// 	// Ajout de cette socket a l'ensemble de surveillance
+// 	if (epoll_ctl(ensemble, EPOLL_CTL_ADD, new_connexion, &event) == -1)
+// 		std::cout<<" EPOLL_CTL_ADD failed (dans test): "<<strerror(errno)<<std::endl;
+// }
