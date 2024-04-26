@@ -17,7 +17,9 @@ GREEN = \033[0;32m
 SRC_DIR = 		./src
 SRCS =			$(SRC_DIR)/main.cpp\
 				$(SRC_DIR)/Handler.cpp\
-				$(SRC_DIR)/utils.cpp\
+				$(SRC_DIR)/Utils.cpp\
+				$(SRC_DIR)/Config.cpp\
+				$(SRC_DIR)/Connection.cpp\
 
 ## OBJECTS
 
@@ -29,6 +31,8 @@ OBJS = 			$(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRCS))
 HDIR = 			./inc
 HD = 			$(HDIR)/webserv.hpp\
 				$(HDIR)/Handler.hpp\
+				$(HDIR)/Config.hpp\
+				$(HDIR)/Connection.hpp\
 
 INC_HD =		-I $(HDIR)
 

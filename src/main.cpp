@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 13:17:47 by clbernar          #+#    #+#             */
-/*   Updated: 2024/04/22 14:21:04 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/04/26 16:41:10 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -19,13 +19,16 @@ int	main(int argc, char **argv)
 		std::cout<<"This program requires one and only one argument."<<std::endl;
 	else
 	{
-		std::cout<<"Ca marche"<<std::endl;
+		// std::cout<<"Ca marche"<<std::endl;
 		Handler	handler;
-		// handler.test();
-		// Gestion d'erreur ?
+
 		// handler.parsing_config();
-		handler.init_server();
-		handler.launch_server();
+		handler.init_test_config();
+		handler.init_listen_socket();
+
+		// handler.init_server();
+		// handler.launch_server();
+
 		// clean ??
 	}
 	// Checker le code d'erreur de l'objet Server pour retourner le bon code d'erreur

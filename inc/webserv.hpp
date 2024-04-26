@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 11:52:42 by clbernar          #+#    #+#             */
-/*   Updated: 2024/04/22 18:08:28 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/04/26 18:50:08 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -21,6 +21,8 @@
 #include <cstdlib>
 
 #include "Handler.hpp"
+#include "Config.hpp"
+#include "Connection.hpp"
 
 unsigned long	convert_addr(std::string to_convert);
 

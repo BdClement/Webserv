@@ -17,12 +17,15 @@
 
 #include <sys/epoll.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
+// #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
+#include <vector>
 
-#include "webserv.hpp"
+#include "Connection.hpp"
+#include "Config.hpp"
+// #include "webserv.hpp"
 
 
 class Handler
@@ -34,22 +37,33 @@ class Handler
 
 	Handler & operator=(Handler const& equal);
 
-	// ParsingConfig qui retourne des objets contenant l'ensemble des informations (a definir)
-	// Avec sous objet bloc Location (a definir aussi)
 
-	// A partir du parsing preparer les connexions c'est a dire creer des structs sockaddr_in
-	// a stocker dans les objets cree lors du parsing
-	// ajouter peut etre une gestion du cas ou y'a pas d'IP seulement un nom de domaine avec getaddrinfo()
-	//bind les sockets d'ecoutes avec l'adresse IP et listen
+
 	void	init_server();
 	// Faire la boucle principale de surveillance des sockets grace
 	void	launch_server();
 	// void	test(int	new_connexion, int ensemble, struct sockaddr_in new_connexion_info);
+
+	// fonction qui joue le role du parsing
+	void	init_test_config();
+	void	init_listen_socket();
+	bool	interface_already_exist(std::vector<Config>::iterator toFind);
+
 	private:
 
-	//Stockage des objets retourne par Paring (conteneur ?)
-	struct	sockaddr_in	listen_connexion; // Directement stocke ca dans les objets retourne par le Parsing ?
-	int					socket_fd;// vector pour gerer dynamiquement
+	// Retour du parsing du fichier de config
+	std::vector<Config>	m_config;
+	// Sockets d'ecoutes
+	std::vector<Connection>	m_listen_connection;
+	// Sockets de communication HTTP
+	std::vector<Connection>	m_http_connection;
+
+	struct sockaddr_in	listen_connexion;
+	int					socket_fd;
+	int					client_fd;
+	struct epoll_event	client_event;
+	int					epoll_fd;
+
 	// int	error_code; // ? Pour le retour de notre programme si erreur rencontrer
 };
 
