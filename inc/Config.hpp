@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/24 13:56:32 by clbernar          #+#    #+#             */
-/*   Updated: 2024/04/26 18:48:14 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/01 18:26:04 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -24,16 +24,11 @@ class Config
 
 	Config & operator=(Config const& equal);
 
-	// private:
-
+	private:
 	std::string	listen_addr;
 	unsigned int	listen_port;
 	std::string	server_name;
 	friend class Handler;
-
-	// int	listen_socket;
-	// struct sockaddr_in	congig_addr;
-	// struct	epoll_event	event;
 };
 
 #endif

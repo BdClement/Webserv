@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/24 18:45:29 by clbernar          #+#    #+#             */
-/*   Updated: 2024/04/26 18:51:38 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/01 18:27:09 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -29,8 +29,7 @@ class Connection
 
 	Connection & operator=(Connection const& equal);
 
-	// void	setSocket(const std::string& toSet);
-	// void	setInterface(const std::string)
+	int	getSocket() const;
 
 	private:
 

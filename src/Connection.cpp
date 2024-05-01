@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/25 15:38:08 by clbernar          #+#    #+#             */
-/*   Updated: 2024/04/26 18:45:20 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/01 18:27:13 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -43,4 +43,9 @@ Connection& Connection::operator=(Connection const & equal)
 		this->event = equal.event;
 	}
 	return *this;
+}
+
+int	Connection::getSocket() const
+{
+	return this->socket;
 }

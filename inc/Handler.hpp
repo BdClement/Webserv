@@ -17,15 +17,14 @@
 
 #include <sys/epoll.h>
 #include <sys/socket.h>
-// #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
 #include <vector>
+#include "algorithm"
 
 #include "Connection.hpp"
 #include "Config.hpp"
-// #include "webserv.hpp"
 
 
 class Handler
@@ -37,32 +36,46 @@ class Handler
 
 	Handler & operator=(Handler const& equal);
 
+	// Predicat pour determiner si une connection est une connection d'ecoute
+	struct CompareSocket{
+	int	searchSocket;
+	CompareSocket(int socket) : searchSocket(socket){}
+	bool operator()(const Connection& obj) const{
+		return obj.socket == searchSocket;
+	}
+	};
+
+	// UTIILS
+	int		recoverIndexConnection(int const socket) const;
+	bool	isListenningConnection(int const socket);
+	bool	interfaceAlreadyExist(std::vector<Config>::iterator const& toFind);
+
+	// PARSING CONFIG FILE
+	void	initTestConfig();//fonction qui joue le role du parsing
+
+	// SERVER INITIALISATION
+
+	void	initServer();
+	void	initListenConnection(std::vector<Config>::iterator & it, Connection & new_connection);// Init struct sockaddr_in et epoll_event
+
+	// LAUNCHING SERVER
+	void	launchServer();
+	void	acceptIncomingConnection(int const socket);
+	void	handlingEpollinEvent(int const index);
+	void	handlingEpolloutEvent(int const index);
+	void	handlingEpollerrEvent(int const index);
 
 
-	void	init_server();
-	// Faire la boucle principale de surveillance des sockets grace
-	void	launch_server();
-	// void	test(int	new_connexion, int ensemble, struct sockaddr_in new_connexion_info);
-
-	// fonction qui joue le role du parsing
-	void	init_test_config();
-	void	init_listen_socket();
-	bool	interface_already_exist(std::vector<Config>::iterator toFind);
+	// CLEANING SERVER
+	void	closeAndRmConnection(int const index);
 
 	private:
 
-	// Retour du parsing du fichier de config
-	std::vector<Config>	m_config;
-	// Sockets d'ecoutes
-	std::vector<Connection>	m_listen_connection;
-	// Sockets de communication HTTP
-	std::vector<Connection>	m_http_connection;
+	std::vector<Config>			m_config;// Objets issus du Parsing du config file
+	std::vector<Connection>		m_listen_connection;// Sockets d'ecoutes
+	std::vector<Connection>		m_http_connection;// Sockets de communication HTTP
 
-	struct sockaddr_in	listen_connexion;
-	int					socket_fd;
-	int					client_fd;
-	struct epoll_event	client_event;
-	int					epoll_fd;
+	int							epoll_fd;
 
 	// int	error_code; // ? Pour le retour de notre programme si erreur rencontrer
 };

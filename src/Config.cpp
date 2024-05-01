@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/24 13:59:57 by clbernar          #+#    #+#             */
-/*   Updated: 2024/04/26 17:00:58 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/01 18:24:24 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -32,6 +32,7 @@ Config::~Config()
 
 Config& Config::operator=(Config const & equal)
 {
+	// std::cout<<"Config assignation operator called"<<std::endl;
 	// A faire plutard
 	if (this != &equal)
 	{
