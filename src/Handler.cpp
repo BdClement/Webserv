@@ -6,14 +6,14 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 12:55:53 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/01 18:41:18 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/17 18:02:03 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Handler.hpp"
-#include <unistd.h> // Pour sleep
+#include "Config.hpp"
 
-struct clearFromHanlder global = {NULL, NULL, NULL, 0};
+struct clearFromHanlder global = {NULL, NULL, NULL, 0,};
 
 /***********************************************************************************************************
  *                                                                                                         *
@@ -23,7 +23,7 @@ struct clearFromHanlder global = {NULL, NULL, NULL, 0};
 
 Handler::Handler()
 {
-	extern clearFromHanlder globalSignal;
+	extern clearFromHanlder global;
 	global.global_config = &(this->m_config);
 	global.global_listen_connection = &(this->m_listen_connection);
 	global.global_http_connection = &(this->m_http_connection);
@@ -71,16 +71,23 @@ int		Handler::recoverIndexConnection(int const socket) const
 // UTILS This function checks if a socket is a listening socket
 bool	Handler::isListenningConnection(int const socket)
 {
+	// struct CompareSocket{
+	// int	searchSocket;
+	// CompareSocket(int socket) : searchSocket(socket){}
+	// bool operator()(const Connection& obj) const{
+	// 	return obj.socket == searchSocket;
+	// }
+	// };
 	std::vector<Connection>::iterator it = find_if(m_listen_connection.begin(), m_listen_connection.end(), CompareSocket(socket));
 	if (it != m_listen_connection.end())
 	{
-		std::cout<<socket<<" is a listenning socket"<<std::endl;
+		// std::cout<<"\t"<<socket<<" is a listenning socket"<<std::endl;
 		return true;
 	}
 	else
 	{
-		std::cout<<socket<<" is not a listenning socket"<<std::endl;
-		sleep(2);// A SUPPRIMER
+		// std::cout<<"\t"<<socket<<" is not a listenning socket"<<std::endl;
+		// sleep(2);// A SUPPRIMER
 		return false;
 	}
 }
@@ -94,7 +101,7 @@ bool	Handler::interfaceAlreadyExist(std::vector<Config>::iterator const& toFind)
 			return false;
 		if (it->listen_addr == toFind->listen_addr && it->listen_port == toFind->listen_port)
 		{
-			std::cout<<"Socket not created for interface => "<<toFind->listen_addr<<" : "<<toFind->listen_port<<". This interface already has a dedicated socket."<<std::endl;
+			PRINT_RED("Socket not created")<<" interface ["<<toFind->listen_addr<<":"<<toFind->listen_port<<"]. This interface already has a dedicated socket."<<std::endl;
 			return true;
 		}
 	}
@@ -151,58 +158,79 @@ void	Handler::initTestConfig()// PARTIE PARSING
 // And add them to epoll
 void	Handler::initServer()
 {
+	std::cout<<"************************************************************\n\n*                        WEBSERV                           *\n\n************************************************************\n"<<std::endl;
 	this->epoll_fd = epoll_create1(0);
 	int i = 0;
-
+	if (this->epoll_fd == -1)
+	{
+		PRINT_RED("Epoll_fd creation failed : ")<<strerror(errno)<<std::endl;
+		exit(errno);
+	}
+	std::cout<<"\n*****************   SERVER INITIALIATION   *****************\n"<<std::endl;
 	for (std::vector<Config>::iterator it = m_config.begin(); it != m_config.end(); ++it)
 	{
-		std::cout<<"\n\n\nTour de boucle "<<i++<<std::endl;
+	            //    ************************************************************
+		std::cout<<"\n\n==== Config Block "<<(i++ + 1)<<" ===="<<std::endl;
 		if (!interfaceAlreadyExist(it))
 		{
 			Connection	new_connection;
-			// SOCKET
-			new_connection.socket = socket(AF_INET, SOCK_STREAM, 0);
-			if (new_connection.socket == -1)
-			{
-				PRINT_RED("Socket creation failed :")<<strerror(errno)<<std::endl;
+			if (!this->initListenConnection(it, new_connection))
 				continue;
-			}
-			else
-				PRINT_GREEN("Socket created ")<<new_connection.socket<<std::endl;
-			this->initListenConnection(it, new_connection);
 			//BIND
+			std::cout<<"--- Binding socket to interface ---"<<std::endl;
 			if (bind(new_connection.socket, (struct sockaddr *)&(new_connection.interface), sizeof(new_connection.interface)) == -1)
 			{
-				PRINT_RED("Bind failed")<<" socket "<<new_connection.socket<<" to interface "<<it->listen_addr<<":"<<it->listen_port<<" : "<<strerror(errno)<<std::endl;
+				PRINT_RED("\tFail")<<" : Socket "<<new_connection.socket<<" to interface "<<it->listen_addr<<":"<<it->listen_port<<" : "<<strerror(errno)<<std::endl;
 				if (close(new_connection.socket) == -1)
-					PRINT_RED("Closing socket failed : ")<<strerror(errno)<<std::endl;// a gerer ?
+					PRINT_RED("Closing socket failed : ")<<strerror(errno)<<std::endl;
 				continue;
 			}
 			else
-				PRINT_GREEN("Bind successful")<<" socket "<<new_connection.socket<<" to interface "<<it->listen_addr<<":"<<it->listen_port<<std::endl;
+				PRINT_GREEN("\tSuccess")<<std::endl;
 			//LISTEN
+			std::cout<<"--- Listenning socket ---"<<std::endl;
 			if (listen(new_connection.socket, 20) == -1)
 			{
-				PRINT_RED("Listening failed : ")<<strerror(errno)<<std::endl;
+				PRINT_RED("\tFail : ")<<strerror(errno)<<std::endl;
+				if (close(new_connection.socket) == -1)
+					PRINT_RED("Closing socket failed : ")<<strerror(errno)<<std::endl;
 				continue;
 			}
 			else
-				PRINT_GREEN("Listenning successful")<<std::endl;
+				PRINT_GREEN("\tSuccess")<<std::endl;
 			//Ajout de la socket d'ecoute au vecteur
 			m_listen_connection.push_back(new_connection);
+			std::cout<<"--- Adding socket to epoll ---"<<std::endl;
 			if (epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, new_connection.socket, &(new_connection.event)) == -1)
-				PRINT_RED("Adding socket to epoll failed : ")<<strerror(errno)<<std::endl;
+				PRINT_RED("\tFail : ")<<strerror(errno)<<std::endl;
 			else
-				std::cout<<"Adding socket to epoll"<<std::endl;
+				PRINT_GREEN("\tSuccess")<<" : socket "<<new_connection.socket<<" to interface ["<<it->listen_addr<<":"<<it->listen_port<<"]"<<std::endl;
 		}
 	}
-	std::cout<<"\n\n\nNombre de socket d'ecoute cree = "<<this->m_listen_connection.size()<<std::endl;
+	PRINT_GREEN("Initialisation finished")<<". "<<this->m_listen_connection.size()<<" listenning socket(s) created in total.\n"<<std::endl;
 }
 
 // This functions fills structures sockaddr_in and epoll_event of Connection object
-void	Handler::initListenConnection(std::vector<Config>::iterator & it, Connection & new_connection)
+bool	Handler::initListenConnection(std::vector<Config>::iterator & it, Connection & new_connection)
 {
-	std::cout<<"New connection object initliazed [Interface and event]"<<std::endl;
+	// SOCKET
+	std::cout<<"--- Socket creation ---"<<std::endl;
+	new_connection.socket = socket(AF_INET, SOCK_STREAM, 0);
+	if (new_connection.socket == -1)
+	{
+		PRINT_RED("\tFail")<<" : "<<strerror(errno)<<std::endl;
+		return false;
+	}
+	else
+		PRINT_GREEN("\tSuccess")<<std::endl;
+	// if (fcntl(new_connection.socket, F_SETFL, O_NONBLOCK) < 0)
+	// {
+	// 	PRINT_RED("Error O_NONBLOCK failed on socket")<<" : Listenning socket "<<new_connection.socket<<" closed"<<std::endl;
+	// 	close(new_connection.socket);
+	// 	return false;
+	// }
+	std::cout<<"--- Connection object initialization ---"<<std::endl;
+	PRINT_GREEN("\tSuccess [Interface and event]")<<std::endl;
 	// INTERFACE
 	new_connection.interface.sin_family = AF_INET;
 	new_connection.interface.sin_port = htons(it->listen_port);
@@ -216,6 +244,7 @@ void	Handler::initListenConnection(std::vector<Config>::iterator & it, Connectio
 	// //EVENT
 	new_connection.event.events = EPOLLIN;
 	new_connection.event.data.fd = new_connection.socket;
+	return true;
 }
 
 /***********************************************************************************************************
@@ -248,6 +277,7 @@ void	Handler::launchServer()
 	// 	// isMainProcess = false;
 	// 	sleep(100);
 	// }
+	std::cout<<"\n*****************       SERVER LAUNCH      *****************\n"<<std::endl;
 	while (1)
 	{
 		struct epoll_event	events[MAX_EVENTS];// Taille a debattre & memset ?
@@ -270,24 +300,26 @@ void	Handler::launchServer()
 					acceptIncomingConnection(events[i].data.fd);
 				else// LOGIQUE DE GESTION DE SOCKET DE COMMUNICATION
 				{
+					std::cout<<"\n=== Handling event... ===\n"<<std::endl;
 					// On retrouve l'objet Connection associe a la socket qui recoit un evenement
 					int	index = recoverIndexConnection(events[i].data.fd);
 					if (index == -1)
 					{
-						PRINT_RED("Connection recovery failed")<<std::endl;
+						PRINT_RED("\tConnection recovery failed")<<std::endl;
 						continue;
 					}
 					// Logique de gestion des evenements
 					if (events[i].events & EPOLLIN)
-						handlingEpollinEvent(index);
+						handlingEpollinEvent(m_http_connection[index]);
+						// handlingEpollinEvent(index);
 					else if (events[i].events & EPOLLOUT)
-						handlingEpolloutEvent(index);
+						handlingEpolloutEvent(m_http_connection[index]);
 					else if (events[i].events & EPOLLERR)
-						handlingEpollerrEvent(index);
+						handlingEpollerrEvent(m_http_connection[index]);
 					else if (events[i].events & EPOLLHUP)
 					{
 						PRINT_RED("Connection closed by client on socket ")<<m_http_connection[index].socket<<std::endl;
-						closeAndRmConnection(index);// A checker si c'est necessaire ici : Choix
+						closeAndRmConnection(m_http_connection[index]);
 					}
 				}
 			}
@@ -302,26 +334,36 @@ void	Handler::launchServer()
 // and add the socket to epoll
 void	Handler::acceptIncomingConnection(int const socket)
 {
-	std::cout<<"Event recu sur la socket d'ecoute "<<socket<<std::endl;
+	std::cout<<"\n=== Accept connection from listenning socket... ===\n"<<std::endl;
+	std::cout<<"[ Event detected on listenning socket "<<socket<<"\n";
 	Connection new_connection;
 	socklen_t	client_len = sizeof(new_connection.interface);
 	new_connection.socket = accept(socket, (struct sockaddr *)&(new_connection.interface), &client_len);
+	std::cout<<"  New connection established : ";
 	if (new_connection.socket == -1)
 	{
-		PRINT_RED("Accept connexion failed : ")<<strerror(errno)<<std::endl;
+		PRINT_RED("Failed ")<<": "<<strerror(errno)<<std::endl;
 		return;
 	}
 	else
 	{
-		PRINT_GREEN("New connection established : ")<<"socket "<<new_connection.socket<<std::endl;
+		PRINT_GREEN("Success")<<" : socket "<<new_connection.socket<<"\n";
+		// if (fcntl(new_connection.socket, F_SETFL, O_NONBLOCK) < 0)
+		// {
+		// 	PRINT_RED("Error O_NONBLOCK failed on socket")<<" : Connection established closed"<<std::endl;
+		// 	close(new_connection.socket);
+		// 	return ;
+		// }
+		// else
+		// 	PRINT_GREEN("SOCKET DEVENUE NON BLOQUANTE")<<std::endl;
 		new_connection.event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
 		new_connection.event.data.fd = new_connection.socket;
+		std::cout<<"  Adding new socket to epoll : ";
 		if (epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, new_connection.socket, &(new_connection.event)) == -1)
-			PRINT_RED("Adding new incoming connection to epoll failed : ")<<strerror(errno)<<std::endl;
+			PRINT_RED("Failed ")<<": "<<strerror(errno)<<" ]"<<std::endl;
 		else
-			PRINT_GREEN("Addinn new incoming connection to epoll")<<std::endl;
+			PRINT_GREEN("Success")<<" ]"<<std::endl;
 		m_http_connection.push_back(new_connection);
-		sleep(3);
 	}
 }
 
@@ -329,67 +371,127 @@ void	Handler::acceptIncomingConnection(int const socket)
 // Clean conneciton en cas d'erreur de lecture de la requete
 // This function reads request and treat it with it Connection object
 // It creates an http Response and make EPOLLOUT event on the socket as the response is ready
-void	Handler::handlingEpollinEvent(int const index)
+void	Handler::handlingEpollinEvent(Connection & connection)
 {
-	std::cout<<"Event EPOLLIN detected on socket "<<m_http_connection[index].socket<<std::endl;
-	//Logique de lecture de la donnee recue (Requete)
-	char	buffer[10000];
+	// READ
+	std::cout<<"[ Event EPOLLIN detected on socket "<<connection.socket<<std::endl;
+	unsigned char	buffer[BUFFER_SIZE];
 	memset(buffer, '\0', sizeof(buffer));
-	int bytes_read = recv(m_http_connection[index].socket, buffer, sizeof(buffer), 0);
+	int bytes_read = recv(connection.socket, buffer, sizeof(buffer), 0);
 	// S'assurer que le dernier element de buffer est bien \0
+	// if (bytes_read == EWOULDBLOCK || bytes_read == EAGAIN)
+	// {
+	// 	PRINT_RED("\tERREUR DETECTEE GRACE AU CARACTERE NON BLOQUANT DE LA SOCKET")<<std::endl;
+	// 	return;
+	// }
 	if (bytes_read <= 0)
 	{
 		if (bytes_read == 0)
-			std::cout<<"Client closed connection"<<std::endl;
+			std::cout<<"  Client closed connection]"<<std::endl;
 		else
-			std::cout<<"Error : "<<strerror(errno)<<" [Attention WARNING : pas le droit d'utiliser errno ici == A MODIFIER]"<<std::endl;
-		closeAndRmConnection(index);// A checker peut etre en focntion de l'erreur de recv ???
+			std::cout<<"  Error : "<<strerror(errno)<<" [Attention WARNING : pas le droit d'utiliser errno ici == A MODIFIER]"<<std::endl;
+		// closeAndRmConnection(connection);// A checker peut etre en focntion de l'erreur de recv ???
 	}
 	else
 	{
-		std::cout<<"Le message recu est :\n"<<buffer<<std::endl;
-		std::cout<<"Logique de traitement de requete ici"<<std::endl;
-		std::cout<<"Logique de generation de reponse HTTP a integrer ici"<<std::endl;
-		// |= "ou" binaire avec assignation. Permet de combiner les bits deja presents au bit EPOLLOUT que l'on ajoute
-		m_http_connection[index].event.events |= EPOLLOUT;
-		// On declare qu'on est pret a repondre sur la socket concernee (A voir avec les requetes fragmentees)
-		if (epoll_ctl(this->epoll_fd, EPOLL_CTL_MOD, m_http_connection[index].socket, &(m_http_connection[index].event)) == -1)
+		//PARSE REQUEST
+		connection.request.m_read.insert(connection.request.m_read.end(), buffer, buffer + bytes_read);
+		std::cout<<"\nMessage received :\n["<<std::endl;
+		for (std::vector<unsigned char>::iterator it = connection.request.m_read.begin(); it != connection.request.m_read.end(); ++it)// AFFICHAGE DE TEST
+			std::cout<<*it;
+		std::cout<<"]"<<std::endl;
+		connection.request.parseRequest();
+		if (connection.request.m_requestIsComplete)
 		{
-			PRINT_RED("Adding EPOLLOUT to watched event failed :")<<" socket "<<m_http_connection[index].socket<<std::endl;
-			closeAndRmConnection(index);// A checker si c'est necessaire ici : Choix
+			std::cout<<"[ Logique de traitement de requete ici ]"<<std::endl;
+			//GENERATE RESPONSE => Objet Connection Concerne, Vector de Config
+			connection.response.generateResponse(m_config, connection.request);
+			std::cout<<"[ Logique de generation de reponse HTTP a integrer ici ]"<<std::endl;
+			sleep(5);
+			PRINT_GREEN("\n\n  FIN DU SLEEP DE TRAITEMENT DE REQUETE\n")<<std::endl;
+			// DES QUE LA REPONSE EST PRETE
+			// |= "ou" binaire avec assignation. Permet de combiner les bits deja presents au bit EPOLLOUT que l'on ajoute
+			// m_http_connection[index].event.events |= EPOLLOUT;
+			connection.event.events |= EPOLLOUT;
+			// On declare qu'on est pret a repondre sur la socket concernee (A voir avec les requetes fragmentees)
+			if (epoll_ctl(this->epoll_fd, EPOLL_CTL_MOD, connection.socket, &(connection.event)) == -1)
+			{
+				// PRINT_RED("  Adding EPOLLOUT to watched event failed :")<<" socket "<<m_http_connection[index].socket<<std::endl;
+				PRINT_RED("  Adding EPOLLOUT to watched event failed :")<<" socket "<<connection.socket<<std::endl;
+				// closeAndRmConnection(connection);// A checker si c'est necessaire ici : Choix
+				// Remove HTTP Response sans avoir envoye la reponse ??
+			}
+			else
+				PRINT_GREEN("  Adding EPOLLOUT to watched event")<<" socket "<<connection.socket<<std::endl;
+				// PRINT_GREEN("  Adding EPOLLOUT to watched event")<<" socket "<<m_http_connection[index].socket<<std::endl;
 		}
-		else
-			PRINT_GREEN("Adding EPOLLOUT to watched event")<<" socket "<<m_http_connection[index].socket<<std::endl;
 	}
 }
+
+// void	Handler::ParseRequest(int const index)
+// {
+
+// }
 
 // Attention a la gestion des requetes fragmentees
 // Clean connection en cas d'erreur d'envoi de la requete
 // This Function sends the response on the socket and remove EPOLLOUT event on this socket as the reponse has been sent
-void	Handler::handlingEpolloutEvent(int const index)
+void	Handler::handlingEpolloutEvent(Connection & connection)
 {
-	std::cout<<"Event EPOLLOUT detected on socket "<<m_http_connection[index].socket<<std::endl;
-	std::cout<<"Envoi de la reponse generee avec send surement"<<std::endl;
+	const char* html_body = "<!DOCTYPE html>\r\n"
+	                             "<html lang='fr'>\r\n"
+	                             "<head>\r\n"
+	                             "    <meta charset='UTF-8'>\r\n"
+	                             "    <meta name='viewport' content='width=device-width, initial-scale=1.0'>\r\n"
+	                             "    <title>Page de test</title>\r\n"
+	                             "</head>\r\n"
+	                             "<body>\r\n"
+	                             "<header>\r\n"
+	                             "        <h1>MyPage</h1>\r\n"
+	                             "    </header>\r\n"
+	                             "    <main>\r\n"
+	                             "        <p>Que c'etait dur...</p>\r\n"
+	                             "    </main>\r\n"
+	                             "</body>\r\n"
+	                             "</html>";
+	size_t body_length = strlen(html_body);
+	std::cout<<"[ TAILLE CONTENT = "<<body_length<<std::endl;
+    char buffer[1024]; // Assurez-vous que la taille du buffer est suffisante
+    snprintf(buffer, sizeof(buffer),
+             "HTTP/1.1 200 OK\r\n"
+             "Content-Type: text/html\r\n"
+             "Content-Length: 300\r\n" // Utilisation de %zu pour imprimer une size_t
+             "Connection: keep-alive\r\n"
+             "\r\n"
+             "%s",
+              html_body);
+	std::cout<<"  Event EPOLLOUT detected on socket "<<connection.socket<<std::endl;
+	std::cout<<"  Envoi de la reponse generee avec send surement"<<std::endl;
+	if (send(connection.socket, buffer, 312, 0) == -1)
+		PRINT_RED("  ERROR couldnt send response")<<std::endl;
+	else
+		PRINT_GREEN("  Response sent")<<std::endl;
 	// &= ~ "et" binaire avec negation de EPOLLOUT et assignation
 	// Cela permet de supprimer le bit EPOLLOUT en inversant sa valeur
-	m_http_connection[index].event.events &= ~EPOLLOUT;
+	connection.event.events &= ~EPOLLOUT;
 	//On declare qu'on ne surveille plus EPOLLOUT puisqu'on a envoye notre reponse
-	if (epoll_ctl(this->epoll_fd, EPOLL_CTL_MOD, m_http_connection[index].socket, &(m_http_connection[index].event)) == -1)
+	if (epoll_ctl(this->epoll_fd, EPOLL_CTL_MOD, connection.socket, &(connection.event)) == -1)
 	{
-		PRINT_RED("Removing EPOLLOUT to watched event failed :")<<" socket "<<m_http_connection[index].socket<<std::endl;
-		closeAndRmConnection(index);// A checker si c'est necessaire ici : Choix
+		PRINT_RED("  Removing EPOLLOUT to watched event failed :")<<" socket "<<connection.socket<<"]"<<std::endl;
+		closeAndRmConnection(connection);//Fermeture car surement boucle infinie de EPOLLOUT
 	}
 	else
-		PRINT_GREEN("Removing EPOLLOUT to watched event")<<" socket "<<m_http_connection[index].socket<<std::endl;
+		PRINT_GREEN("  Removing EPOLLOUT to watched event")<<" socket "<<connection.socket<<"]"<<std::endl;
 	// Si !keep alive dans la requete  => close connection
+	// close(m_http_connection[index].socket);
 }
 
 // Clean connection en cas d'event EPOLLERR detecte : En fonction de l'erreur ou tout le temps ?
-void	Handler::handlingEpollerrEvent(int const index)
+void	Handler::handlingEpollerrEvent(Connection & connection)
 {
-	std::cout<<"Event EPOLLERR detected on socket "<<m_http_connection[index].socket<<" : "<<strerror(errno)<<std::endl;
+	std::cout<<"\tEvent EPOLLERR detected on socket "<<connection.socket<<" : "<<strerror(errno)<<std::endl;
 	// Gestion d'erreur
-	closeAndRmConnection(index);// A checker si c'est necessaire ici : Choix
+	closeAndRmConnection(connection);// A checker si c'est necessaire ici : Choix
 }
 
 /***********************************************************************************************************
@@ -402,16 +504,14 @@ void	Handler::handlingEpollerrEvent(int const index)
 // Comme l'ordre dans mon vecteur n'est pas important, je place l'element que je souhaite
 // Supprimer en dernier puis je le supprime
 // This function close socket and remove Connection object in m_http_connection vector
-void	Handler::closeAndRmConnection(int const index)
+void	Handler::closeAndRmConnection(Connection & connection)
 {
-	if (close(m_http_connection[index].socket) == -1)
-	{
-		PRINT_RED("Closing connection failed ")<<"on socket "<<m_http_connection[index].socket<<" : "<<strerror(errno)<<std::endl;
-	}
-	std::cout<<"Connection socket "<<m_http_connection[index].socket<<" closed"<<std::endl;
-	std::swap(m_http_connection[index], m_http_connection.back());
+	if (close(connection.socket) == -1)
+		PRINT_RED("\tClosing connection failed ")<<"on socket "<<connection.socket<<" : "<<strerror(errno)<<std::endl;
+	else
+		std::cout<<"\tConnection socket "<<connection.socket<<" closed"<<std::endl;
+	std::swap(connection, m_http_connection.back());
 	m_http_connection.pop_back();
-	// std::cout<<"TEST size de vecteur m_http = "<<m_http_connection.size()<<std::endl;
 }
 
 /***********************************************************************************************************
@@ -423,5 +523,96 @@ void	Handler::closeAndRmConnection(int const index)
 // Classe : socket d'ecoute, socket de cmmunication , request, response
 
 // A Faire :
-//			-Penser a l'utilisation d'exceptions
-//			-Demarrer la gestion des requetes
+
+
+// // This functions convert a string address IPv4 in unsigned long to put it in a sockaddr_in struct
+// // Same role as inet_pton() function that converts text to binary form (that we can't use in the project)
+// // It uses std::istringstream to split the string with getline from each "."
+// // It stocks in the atoi conversion of each part in ip_bytes (unsigned char tab)
+// // And it shitfs the bytes to reorganise in unsigned long format
+unsigned long	convertAddr(std::string to_convert)
+{
+	// CHECK mauvais format de string  => return 0
+	std::istringstream	iss(to_convert);
+	std::string	token;
+	unsigned char	ip_bytes[4];
+	int i = 0;
+
+	while (std::getline(iss, token, '.'))
+		ip_bytes[i++] = atoi(token.c_str());
+
+	// for (int j = 0; j < 4; ++j)
+	// 	std::cout<<ip_bytes[j]<<" ";
+	// std::cout<<std::endl;
+
+	unsigned long	ip_addr =
+		(ip_bytes[0] << 24) |
+		(ip_bytes[1] << 16) |
+		(ip_bytes[2] << 8) |
+		ip_bytes[3];
+	return ip_addr;
+}
+
+// EXPLICATION 1 : La gestion de memoire des vector semble complexe. Apres avoir close toutes les sockets
+// J'avais des still recheable (alors que je n'ai rien alloue dynamiquement) qui provenait donc de mes vector
+// Pour liberer la memoire allouee par le vecteur lui meme, la solution etait d'utiliser shrink_to_fit() pour
+// l'espace non necessaire apres avoir clear le vector mais cette methode des vectors est issue de C++11.
+// Pour regler ce soucis je suis passer par un vector temporaire en utilisant "std::vector<Config>()" qui permet
+// de creer un objet temporaire qui ne sera donc pas stocker dans une variable.
+// Je swap ce vector vide avec mon vector qui se retrouve donc dans mon vector temporaire
+// Le destructeur du vector est alors appele sur mon vector et ma variable globale contient desormais un vector vide
+// EXPLICATION 2 : Par souci de simplicite et parce que le but du projet est bien loin de la gestion des signaux,
+// j'ai choisi de gerer les signaux en dehors de ma classe Handler en passant une structure globale pour avoir acces
+// aux donnees a liberer ou a close dans mon gestionnaire de signal.
+// La solution plus propre aurait ete de rendre ma classe Handler Singleton (design pattern ou patron de conception)
+// c'est a dire la rendre instanciable qu'une seule fois comme ce qui est amene a etre le cas.
+// Cette methode implique d'avoir un constructeur privee, une methode d'acces statique qui renvoie l'instance unique
+// de la classe, une instance statique cree a l'interieur de la methode d'acces statique et un pointeur vers l'instance
+// unique a travers lequel j'aurais pu acceder a mes donnees dans ma gestion des signaux.
+// Cela permet d'appeler la methode statique d'acces depuis n'importe ou pour avoir acces a mes elements.
+// Cette methode aurait aussi pu s'utiliser sur une autre classe a l'interieur de ma classe Handler.
+void	signalHandler(int signal_num)
+{
+	extern clearFromHanlder global;
+
+	if (signal_num == SIGINT)
+		std::cout<<"Signal SIGINT received. Cleaning in progress..."<<std::endl;
+	else if (signal_num == SIGQUIT)
+		std::cout<<"Signal SIGQUIT received. Cleaning in progress..."<<std::endl;
+	//VECTOR CONFIG
+	std::vector<Config>().swap(*global.global_config);
+	//VECTOR LISTENNING SOCKET
+	std::cout<<"Cleaning listenning sockets"<<std::endl;
+	std::for_each(global.global_listen_connection->begin(), global.global_listen_connection->end(), &closeSocket);
+	std::vector<Connection>().swap(*global.global_listen_connection);
+	//VECTOR HTTP SOCKET
+	std::cout<<"Cleaning http communication sockets\n"<<std::endl;
+	std::for_each(global.global_http_connection->begin(), global.global_http_connection->end(), &closeSocket);
+	std::vector<Connection>().swap(*global.global_http_connection);
+	//VECTOR VECTOR READING FROM SOCKET
+	// std::vector<unsigned char>().swap(*global.global_request_read);
+	// std::vector<std::vector<unsigned char>* >().swap(global.global_request_read);
+	// std::cout<<"TEST UTILS = "<<global.global_request_read.size()<<std::endl;
+	// global.global_request_read.clear();
+	// std::vector<unsigned char>().swap(global.global_request_read[0]);
+	// std::vector<std::vector<unsigned char> >().swap(global.global_request_read);
+	// std::cout<<"TEST UTILS = "<<global.global_request_read.size()<<std::endl;
+	// EPOLL
+	if (close(*(global.global_epoll_fd)) == -1)
+		PRINT_RED("Closing epoll_fd failed ")<<strerror(errno)<<std::endl;
+	else
+		std::cout<<"Epoll_fd closed"<<std::endl;
+	exit(signal_num);
+}
+
+// This functions is used on a for_each to close socket on each Connection object of a vector
+void	closeSocket(Connection objet)
+{
+	if (close(objet.getSocket()) == -1)
+	{
+		PRINT_RED("Closing connection failed ")<<"on socket "<<objet.getSocket()<<" : "<<strerror(errno)<<std::endl;
+		// Gestion de l'erreur ?
+	}
+	else
+		std::cout<<"socket "<<objet.getSocket()<<" closed"<<std::endl;
+}

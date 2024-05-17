@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/25 15:38:08 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/01 18:27:13 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/16 13:03:24 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -31,7 +31,11 @@ Connection::Connection(Connection const& asign)
 
 Connection::~Connection()
 {
-	// std::cout<<"Connection destructor called"<<std::endl;
+	// extern clearFromHanlder global;
+	// // std::cout<<"Connection destructor called"<<std::endl;
+	// std::vector<std::vector<unsigned char>* >::iterator it = std::find(global.global_request_read.begin(), global.global_request_read.end(), &(this->request.m_read));
+	// if (it != global.global_request_read.end())
+	// 	global.global_request_read.erase(it);
 }
 
 Connection& Connection::operator=(Connection const & equal)

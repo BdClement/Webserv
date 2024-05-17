@@ -12,20 +12,12 @@
 
 // Cette classe sera l'objet principal qui represente notre programme de serveur web
 
-#ifndef __HANDLER__HPP
-#define __HANDLER__HPP
+#pragma once
 
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <cerrno>
-#include <cstring>
-#include <vector>
-#include "algorithm"
-
+#include "webserv.hpp"
 #include "Connection.hpp"
-#include "Config.hpp"
 
+class Config;
 
 class Handler
 {
@@ -36,14 +28,6 @@ class Handler
 
 	Handler & operator=(Handler const& equal);
 
-	// Predicat pour determiner si une connection est une connection d'ecoute
-	struct CompareSocket{
-	int	searchSocket;
-	CompareSocket(int socket) : searchSocket(socket){}
-	bool operator()(const Connection& obj) const{
-		return obj.socket == searchSocket;
-	}
-	};
 
 	// UTIILS
 	int		recoverIndexConnection(int const socket) const;
@@ -56,18 +40,19 @@ class Handler
 	// SERVER INITIALISATION
 
 	void	initServer();
-	void	initListenConnection(std::vector<Config>::iterator & it, Connection & new_connection);// Init struct sockaddr_in et epoll_event
+	bool	initListenConnection(std::vector<Config>::iterator & it, Connection & new_connection);// Init struct sockaddr_in et epoll_event
 
 	// LAUNCHING SERVER
 	void	launchServer();
 	void	acceptIncomingConnection(int const socket);
-	void	handlingEpollinEvent(int const index);
-	void	handlingEpolloutEvent(int const index);
-	void	handlingEpollerrEvent(int const index);
+	void	handlingEpollinEvent(Connection & connection);
+	// void	ParseRequest(int const index);
+	void	handlingEpolloutEvent(Connection & connection);
+	void	handlingEpollerrEvent(Connection & connection);
 
 
 	// CLEANING SERVER
-	void	closeAndRmConnection(int const index);
+	void	closeAndRmConnection(Connection & connection);
 
 	private:
 
@@ -80,4 +65,27 @@ class Handler
 	// int	error_code; // ? Pour le retour de notre programme si erreur rencontrer
 };
 
-#endif
+// Predicat to determine if a socket is a listenning socket
+struct CompareSocket{
+int	searchSocket;
+CompareSocket(int socket) : searchSocket(socket){}
+bool operator()(const Connection& obj) const{
+	return obj.socket == searchSocket;
+}
+};
+
+// Global structure to exit proprely
+struct clearFromHanlder{
+	std::vector<Config>							* global_config;
+	std::vector<Connection> 					* global_listen_connection;
+	std::vector<Connection> 					* global_http_connection;
+	int											* global_epoll_fd;
+	// std::vector<std::vector<unsigned char>* >	*global_request_read;
+	// std::vector<std::vector<unsigned char> >	global_request_read;
+};
+
+// Utils functions
+unsigned long	convertAddr(std::string to_convert);
+void			signalHandler(int signal_num);
+void			closeSocket(Connection objet);
+

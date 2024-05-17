@@ -6,11 +6,11 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/24 13:59:57 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/01 18:24:24 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/15 13:22:24 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "webserv.hpp"
+#include "Config.hpp"
 
 Config::Config(const std::string& addr, unsigned int port, const std::string& name) : listen_addr(addr), listen_port(port), server_name(name)
 {
