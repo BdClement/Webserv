@@ -1,0 +1,1 @@
+Ce fichier est utilise pour etre supprime grace a FrontDelete.html

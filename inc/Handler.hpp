@@ -46,13 +46,12 @@ class Handler
 	void	launchServer();
 	void	acceptIncomingConnection(int const socket);
 	void	handlingEpollinEvent(Connection & connection);
-	// void	ParseRequest(int const index);
 	void	handlingEpolloutEvent(Connection & connection);
 	void	handlingEpollerrEvent(Connection & connection);
 
-
 	// CLEANING SERVER
 	void	closeAndRmConnection(Connection & connection);
+	void	handlingKeepAlive();
 
 	private:
 

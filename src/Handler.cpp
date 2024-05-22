@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 12:55:53 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/17 18:02:03 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/22 20:24:30 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -21,7 +21,7 @@ struct clearFromHanlder global = {NULL, NULL, NULL, 0,};
  *                                                                                                         *
  ***********************************************************************************************************/
 
-Handler::Handler()
+Handler::Handler() : m_config(), m_listen_connection(), m_http_connection(), epoll_fd(0)
 {
 	extern clearFromHanlder global;
 	global.global_config = &(this->m_config);
@@ -71,13 +71,6 @@ int		Handler::recoverIndexConnection(int const socket) const
 // UTILS This function checks if a socket is a listening socket
 bool	Handler::isListenningConnection(int const socket)
 {
-	// struct CompareSocket{
-	// int	searchSocket;
-	// CompareSocket(int socket) : searchSocket(socket){}
-	// bool operator()(const Connection& obj) const{
-	// 	return obj.socket == searchSocket;
-	// }
-	// };
 	std::vector<Connection>::iterator it = find_if(m_listen_connection.begin(), m_listen_connection.end(), CompareSocket(socket));
 	if (it != m_listen_connection.end())
 	{
@@ -324,6 +317,7 @@ void	Handler::launchServer()
 				}
 			}
 		}
+		handlingKeepAlive();
 		// Fonction qui check mes http_connections et supprime les keep_alive qui ont dure trop de temps
 		if (num_event > MAX_EVENTS)
 			std::cout<<"Warning : more events than MAX_EVENTS have been detected. It could affect server's performance"<<std::endl;
@@ -373,6 +367,8 @@ void	Handler::acceptIncomingConnection(int const socket)
 // It creates an http Response and make EPOLLOUT event on the socket as the response is ready
 void	Handler::handlingEpollinEvent(Connection & connection)
 {
+	// SET TIME KEEP-ALIVE
+	connection.last_active_time = time(NULL);
 	// READ
 	std::cout<<"[ Event EPOLLIN detected on socket "<<connection.socket<<std::endl;
 	unsigned char	buffer[BUFFER_SIZE];
@@ -389,8 +385,8 @@ void	Handler::handlingEpollinEvent(Connection & connection)
 		if (bytes_read == 0)
 			std::cout<<"  Client closed connection]"<<std::endl;
 		else
-			std::cout<<"  Error : "<<strerror(errno)<<" [Attention WARNING : pas le droit d'utiliser errno ici == A MODIFIER]"<<std::endl;
-		// closeAndRmConnection(connection);// A checker peut etre en focntion de l'erreur de recv ???
+			std::cout<<"  Error : "<<strerror(errno)<<" [Attention WARNING : pas le droit d'utiliser errno ici == A MODIFIER]"<<std::endl;// A MODIFIER
+		closeAndRmConnection(connection);// A checker peut etre en focntion de l'erreur de recv ???
 	}
 	else
 	{
@@ -403,74 +399,40 @@ void	Handler::handlingEpollinEvent(Connection & connection)
 		connection.request.parseRequest();
 		if (connection.request.m_requestIsComplete)
 		{
-			std::cout<<"[ Logique de traitement de requete ici ]"<<std::endl;
+			std::cout<<"[ Logique de traitement de requete ]"<<std::endl;
+			connection.request.processRequest(m_config, connection.response);
 			//GENERATE RESPONSE => Objet Connection Concerne, Vector de Config
-			connection.response.generateResponse(m_config, connection.request);
-			std::cout<<"[ Logique de generation de reponse HTTP a integrer ici ]"<<std::endl;
-			sleep(5);
-			PRINT_GREEN("\n\n  FIN DU SLEEP DE TRAITEMENT DE REQUETE\n")<<std::endl;
+			std::cout<<"[ Logique de generation de reponse HTTP ]"<<std::endl;
+			connection.response.generateResponse(connection.request);
+			// sleep(5);
+			// PRINT_GREEN("\n\n  FIN DU SLEEP DE TRAITEMENT DE REQUETE\n")<<std::endl;
 			// DES QUE LA REPONSE EST PRETE
 			// |= "ou" binaire avec assignation. Permet de combiner les bits deja presents au bit EPOLLOUT que l'on ajoute
-			// m_http_connection[index].event.events |= EPOLLOUT;
 			connection.event.events |= EPOLLOUT;
 			// On declare qu'on est pret a repondre sur la socket concernee (A voir avec les requetes fragmentees)
 			if (epoll_ctl(this->epoll_fd, EPOLL_CTL_MOD, connection.socket, &(connection.event)) == -1)
-			{
-				// PRINT_RED("  Adding EPOLLOUT to watched event failed :")<<" socket "<<m_http_connection[index].socket<<std::endl;
 				PRINT_RED("  Adding EPOLLOUT to watched event failed :")<<" socket "<<connection.socket<<std::endl;
-				// closeAndRmConnection(connection);// A checker si c'est necessaire ici : Choix
-				// Remove HTTP Response sans avoir envoye la reponse ??
-			}
 			else
 				PRINT_GREEN("  Adding EPOLLOUT to watched event")<<" socket "<<connection.socket<<std::endl;
-				// PRINT_GREEN("  Adding EPOLLOUT to watched event")<<" socket "<<m_http_connection[index].socket<<std::endl;
 		}
 	}
 }
-
-// void	Handler::ParseRequest(int const index)
-// {
-
-// }
 
 // Attention a la gestion des requetes fragmentees
 // Clean connection en cas d'erreur d'envoi de la requete
 // This Function sends the response on the socket and remove EPOLLOUT event on this socket as the reponse has been sent
 void	Handler::handlingEpolloutEvent(Connection & connection)
 {
-	const char* html_body = "<!DOCTYPE html>\r\n"
-	                             "<html lang='fr'>\r\n"
-	                             "<head>\r\n"
-	                             "    <meta charset='UTF-8'>\r\n"
-	                             "    <meta name='viewport' content='width=device-width, initial-scale=1.0'>\r\n"
-	                             "    <title>Page de test</title>\r\n"
-	                             "</head>\r\n"
-	                             "<body>\r\n"
-	                             "<header>\r\n"
-	                             "        <h1>MyPage</h1>\r\n"
-	                             "    </header>\r\n"
-	                             "    <main>\r\n"
-	                             "        <p>Que c'etait dur...</p>\r\n"
-	                             "    </main>\r\n"
-	                             "</body>\r\n"
-	                             "</html>";
-	size_t body_length = strlen(html_body);
-	std::cout<<"[ TAILLE CONTENT = "<<body_length<<std::endl;
-    char buffer[1024]; // Assurez-vous que la taille du buffer est suffisante
-    snprintf(buffer, sizeof(buffer),
-             "HTTP/1.1 200 OK\r\n"
-             "Content-Type: text/html\r\n"
-             "Content-Length: 300\r\n" // Utilisation de %zu pour imprimer une size_t
-             "Connection: keep-alive\r\n"
-             "\r\n"
-             "%s",
-              html_body);
 	std::cout<<"  Event EPOLLOUT detected on socket "<<connection.socket<<std::endl;
-	std::cout<<"  Envoi de la reponse generee avec send surement"<<std::endl;
-	if (send(connection.socket, buffer, 312, 0) == -1)
+	const unsigned char* rep = &(connection.response.m_response[0]);
+	PRINT_GREEN("Contenu de ce qui a ete envoye = ")<<std::endl;
+	for (std::vector<unsigned char>::iterator it = connection.response.m_response.begin(); it != connection.response.m_response.end(); ++it)
+		std::cout<<*it;
+	std::cout<<std::endl;
+	if (send(connection.socket, rep, connection.response.m_response.size(), 0) == -1)
 		PRINT_RED("  ERROR couldnt send response")<<std::endl;
 	else
-		PRINT_GREEN("  Response sent")<<std::endl;
+		PRINT_GREEN(" Response sent")<<std::endl;
 	// &= ~ "et" binaire avec negation de EPOLLOUT et assignation
 	// Cela permet de supprimer le bit EPOLLOUT en inversant sa valeur
 	connection.event.events &= ~EPOLLOUT;
@@ -483,7 +445,13 @@ void	Handler::handlingEpolloutEvent(Connection & connection)
 	else
 		PRINT_GREEN("  Removing EPOLLOUT to watched event")<<" socket "<<connection.socket<<"]"<<std::endl;
 	// Si !keep alive dans la requete  => close connection
-	// close(m_http_connection[index].socket);
+	if (!connection.request.isKeepAlive())
+		closeAndRmConnection(connection);
+	else
+	{
+		connection.response.clear();
+		connection.request.clear();
+	}
 }
 
 // Clean connection en cas d'event EPOLLERR detecte : En fonction de l'erreur ou tout le temps ?
@@ -514,15 +482,35 @@ void	Handler::closeAndRmConnection(Connection & connection)
 	m_http_connection.pop_back();
 }
 
+// This function checks if some HTTP Connection has been kept open for too long
+// If so, it closes them and remove Connection object
+void	Handler::handlingKeepAlive()
+{
+	for (std::vector<Connection>::iterator it = m_http_connection.begin(); it != m_http_connection.end();)
+	{
+		if (difftime(time(NULL), it->last_active_time) > TIMEOUT)
+		{
+			// std::cout<<difftime(time(NULL), it->last_active_time)<<" > "<<TIMEOUT<<std::endl;
+			std::vector<Connection>::iterator next = it;
+			++next;
+			if (close(it->socket) == -1)
+				PRINT_RED("\tClosing connection failed ")<<"on socket "<<it->socket<<" : "<<strerror(errno)<<std::endl;
+			else
+				PRINT_GREEN("Connection socket closed : ")<<it->socket<<" | Kept alive 30 sec"<<std::endl;
+			it = m_http_connection.erase(it);
+			// PRINT_RED("JE suis sense retirer la connection qui n'a pas ete utilise depuis plus de 30 sec")<<std::endl;
+		}
+		else
+			++it;
+	}
+}
+
 /***********************************************************************************************************
  *                                                                                                         *
- *                                                 BROUILLON                                               *
+ *                                                 Hors-Sujet                                              *
  *                                                                                                         *
  ***********************************************************************************************************/
 
-// Classe : socket d'ecoute, socket de cmmunication , request, response
-
-// A Faire :
 
 
 // // This functions convert a string address IPv4 in unsigned long to put it in a sockaddr_in struct
@@ -589,14 +577,7 @@ void	signalHandler(int signal_num)
 	std::cout<<"Cleaning http communication sockets\n"<<std::endl;
 	std::for_each(global.global_http_connection->begin(), global.global_http_connection->end(), &closeSocket);
 	std::vector<Connection>().swap(*global.global_http_connection);
-	//VECTOR VECTOR READING FROM SOCKET
-	// std::vector<unsigned char>().swap(*global.global_request_read);
-	// std::vector<std::vector<unsigned char>* >().swap(global.global_request_read);
-	// std::cout<<"TEST UTILS = "<<global.global_request_read.size()<<std::endl;
-	// global.global_request_read.clear();
-	// std::vector<unsigned char>().swap(global.global_request_read[0]);
-	// std::vector<std::vector<unsigned char> >().swap(global.global_request_read);
-	// std::cout<<"TEST UTILS = "<<global.global_request_read.size()<<std::endl;
+	//VECTOR VECTOR READING FROM SOCKET A garder en tete si leak ?
 	// EPOLL
 	if (close(*(global.global_epoll_fd)) == -1)
 		PRINT_RED("Closing epoll_fd failed ")<<strerror(errno)<<std::endl;
@@ -609,10 +590,7 @@ void	signalHandler(int signal_num)
 void	closeSocket(Connection objet)
 {
 	if (close(objet.getSocket()) == -1)
-	{
 		PRINT_RED("Closing connection failed ")<<"on socket "<<objet.getSocket()<<" : "<<strerror(errno)<<std::endl;
-		// Gestion de l'erreur ?
-	}
 	else
 		std::cout<<"socket "<<objet.getSocket()<<" closed"<<std::endl;
 }

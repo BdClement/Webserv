@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supprimer une ressource</title>
+</head>
+<body>
+    <h1>Supprimer une ressource</h1>
+    <button onclick="deleteResource()">Supprimer</button>
+    <script>
+        function deleteResource() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("DELETE", "http://localhost:8080/FileToDelete.txt");// Le path sera retoruve grace a la CONFIG ici !
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    alert("La ressource a été supprimée avec succès !");
+                } else {
+                    alert("Une erreur s'est produite lors de la suppression de la ressource.");
+                }
+            };
+            xhr.send();
+        }
+    </script>
+</body>
+</html>

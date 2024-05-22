@@ -6,13 +6,13 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/25 15:38:08 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/16 13:03:24 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/21 19:07:36 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Connection.hpp"
 
-Connection::Connection()
+Connection::Connection() : last_active_time(time(NULL))
 {
 	// std::cout<<"Connection constructor called"<<std::endl;
 	// init interface sockaddr_in
@@ -27,6 +27,10 @@ Connection::Connection(Connection const& asign)
 	socket = asign.socket;
 	interface = asign.interface;
 	event = asign.event;
+	request = asign.request;
+	response = asign.response;
+	last_active_time = asign.last_active_time;
+
 }
 
 Connection::~Connection()
@@ -45,6 +49,9 @@ Connection& Connection::operator=(Connection const & equal)
 		this->socket = equal.socket;
 		this->interface = equal.interface;
 		this->event = equal.event;
+		this->request= equal.request;
+		this->response = equal.response;
+		this->last_active_time = equal.last_active_time;
 	}
 	return *this;
 }

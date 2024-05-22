@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/17 16:02:43 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/17 18:06:21 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/21 17:56:24 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -26,14 +26,26 @@ class Response
 
 	Response & operator=(Response const& equal);
 
-	void	generateResponse(std::vector<Config> & m_config, Request & request);
-	void	generateErrorResponse(int error_code) const;
-	void	generateStatusLine();
+	void				set_error_file();
+	void				set_code_meaning();
+
+	void				generateResponse(Request & request);
+	void				generateStatusLine(Request & request);
+	void				generateHeaders(Request & request);
+	void				generateErrorBody(Request & request);
+	void				setContentType(std::string & uri);
+
+	void				clear();
 
 	private:
 
+	std::vector<unsigned char>	m_response;
+	mapIntString				m_error_file;
+	mapIntString				m_code_meaning;
+	unsigned int				m_body_size;
+	std::string					m_content_type;
 
-	// friend class Handler;
+	friend class Handler;
 	// friend class Connection;
-	// friend class Request;
+	friend class Request;
 };

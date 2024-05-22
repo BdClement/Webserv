@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/24 18:45:29 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/17 17:32:19 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/21 14:17:45 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -34,6 +34,7 @@ class Connection
 	struct	epoll_event		event;
 	class Request			request;
 	class Response			response;
+	time_t					last_active_time;
 
 	friend class Handler;
 	friend struct CompareSocket;

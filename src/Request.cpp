@@ -6,13 +6,13 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:29:28 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/17 14:12:24 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/22 20:21:51 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Request.hpp"
 
-Request::Request() : m_requestIsComplete(false), m_body_pos(0), m_error_code(0), m_headers()
+Request::Request() : m_requestIsComplete(false), m_uriIsADirectory(false), m_body_pos(0), m_error_code(0), m_response_code(0), m_headers()
 {
 	// std::cout<<"Request constructor called"<<std::endl;
 }
@@ -39,6 +39,7 @@ Request& Request::operator=(Request const & equal)
 	return *this;
 }
 
+// A terminer. Logique du body a inclure
 void	Request::parseRequest()
 {
 	unsigned char	endOfHeaders[] = {'\r', '\n', '\r', '\n'};
@@ -129,7 +130,6 @@ bool	Request::ProtocolValid(std::string const & protocol) const
 // L'utilisation de ces caracteres devra donc forcement correspondre a une ressource existante pour ne pas
 // engendrer d'erreur.
 // RFC 3986 concernant les URI
-// Mettre en place une logique qui cherche si la ressource se trouve dans un chemin autorise par le serveur ??
 bool	Request::UriValid(std::string & uri)
 {
 	// URI SIZE
@@ -179,7 +179,7 @@ void	Request::parseHeaders(size_t startHeaders)
 	else if (Headers.size() > HEADERTOTAL_MAX_SIZE)
 	{
 		m_error_code = 431;
-		PRINT_RED("Request Fields Too Large")<<std::endl;
+		PRINT_RED("Request Headers Fields Too Large")<<std::endl;
 		return ;
 	}
 	size_t initial_pos = 0;
@@ -196,13 +196,8 @@ void	Request::parseHeaders(size_t startHeaders)
 		std::string header = Headers.substr(initial_pos, pos - initial_pos);
 		if (!HeaderLineValid(header))
 			break ;
-		// sleep(1);
 		initial_pos = pos + 2;
-		// std::cout<<"TEST"<<std::endl;
 	}
-	// Inclusion dans la map
-	// PRINT_GREEN("AFFICHAGE DE MES HEADERS :\n")<<Headers<<std::endl;
-	// std::cout<<"AFFICHAGE DE MA POSITION de fin de headers : "<<m_read[m_body_pos - 1]<<std::endl;
 	// m_body_pos est ok = Si il y a un Body, il start a m_body_pos + 4 [A CHECKER]
 	PRINT_GREEN("Resultat de fin de parsing des Headers :")<<std::endl;
 	mapString::iterator it;
@@ -251,7 +246,172 @@ bool	Request::HeaderLineValid(std::string &header)
 	return true;
 }
 
+// This function specifies if a Request has to be interpreted as keep-alive connection or not
+// In fact only when header Connection specified close, it is not interpreted as keep-alive connection
+bool	Request::isKeepAlive()
+{
+	mapString::iterator it = m_headers.find("Connection:");
+	if (it != m_headers.end())
+	{
+		// PRINT_GREEN("Connection: Header trouve")<<std::endl;
+		if (m_headers["Connection:"] == "close")
+			return false;
+		else
+			return true;
+	}
+	return true;
+}
+
+void	Request::processRequest(std::vector<Config> & m_config, Response & response)
+{
+	// FIND VIRTUAL SERVER
+	// FIND LOCATION??
+	if (m_method == "GET")
+		processGet(m_config[0], response);
+	else if (m_method == "DELETE")
+		processDelete(m_config[0], response);
+	else
+		PRINT_RED("ERROR UNKOWN METHOD PASS PARSING ")<<m_method<<std::endl;
+	// else if (m_method == "POST")// a Ajouter entre GET et DELETE
+	// 	processPost(m_config[0], response);
+}
+
+// Attention Header Accept contenu ce qui est envoye ou renvoyer ??
+// This function process a GET Request. If an error occured,it specifies it and stops
+// If not,the ressource asked is placed in the Response object
+void	Request::processGet(Config & config, Response & response)
+{
+	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
+	// Recherche du bloc Location ?
+	(void)config;
+	// en vrai il faudrait trouver la base equivalent a "/test" ici dans l'objet config
+	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
+	std::string ressource = "test" + m_uri; // Attention au cas ou ressource est un Directory
+	if (!checkRessourceAccessibilty(ressource))
+		return ;
+	// PRINT_RED("Probleme avec la resource demande : ")<<ressource<<" "<<strerror(errno)<<std::endl;// A suuprimer
+	std::ifstream file(ressource.c_str(), std::ios::binary);
+	if (!file)
+	{
+		PRINT_RED("Impossible to open ressource : Strange check processGet function")<<std::endl;
+		m_error_code = 500;// Checker d'autres cas possibles ?
+		return ;
+	}
+	else
+		PRINT_GREEN("Ressource trouvee : ")<<ressource<<std::endl;
+	response.m_response = std::vector<unsigned char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+	response.m_body_size = response.m_response.size();
+	m_response_code = 200;// A voir les cas de variantes ??
+	file.close();
+	response.m_response.push_back('\r');
+	response.m_response.push_back('\n');
+}
+
+// This function checks the ressource asked in a request
+// If it exists, is not a directory and has permission access,it returns true
+bool	Request::checkRessourceAccessibilty(std::string const & ressource)
+{
+	struct stat s;
+	// EXISTENCE
+	if (stat(ressource.c_str(), &s) != 0)// La ressource n'existe pas
+	{
+		PRINT_RED("Ressource doesn't exist")<<std::endl;
+		m_error_code = 404;
+		return false;
+	}
+	// DIRECTORY
+	if (s.st_mode & S_IFDIR)// A gerer avec la Config (Pour GET notamment)
+	{
+		PRINT_RED("Ressource is a directory")<<std::endl;
+		// Pour DELTETE en cas de directory , check si la methode est GET pour agir differemment (+POST par la suite)
+		m_error_code = 405;// Pas autorise par DELETE. Check potentiellement 403 ?
+		// IF GET et PAS d'index specifie Et pas autoindex active => 403 Forbidden
+		// La difference est que GET est autorise sur un directory mais depend de la config
+		// Alors que
+		return false;
+	}
+	// PERMISSION
+	if (m_method == "GET")
+	{
+		if (access(ressource.c_str(), R_OK) == -1)//Checker ordre : Check permission avant directory ?
+		{
+			PRINT_RED("Ressource doesn't have permission access")<<std::endl;
+			m_error_code = 403;
+			return false;
+		}
+	}
+	else if (m_method == "DELETE")
+	{
+		if (access(ressource.c_str(), R_OK | W_OK) == -1)//Checker ordre : Check permission avant directory ?
+		{
+			PRINT_RED("Ressource doesn't have permission access")<<std::endl;
+			m_error_code = 403;
+			return false;
+		}
+	}
+	return true;
+}
+
+// En cas de succes Message sous forme de text en tant que Body
+// "Data received and processed successfully."|| "File uploaded successfully."
+// void	processPost(Config & config)
+// {
+
+// }
+
+// This function process a Delete request. It checks ressource's accesibility and if the ressource
+// can be deleted it does it, otherwise it prepares error_code to send error_file
+void	Request::processDelete(Config & config, Response & response)
+{
+	(void)config;
+	// Initialisation de ressource grace a la config
+	std::string ressource = "test" + m_uri;
+	if (!checkRessourceAccessibilty(ressource))
+		return ;
+	else// FILE
+	{
+		std::string body;
+		PRINT_GREEN("Ressource is a file")<<std::endl;
+		if (std::remove(ressource.c_str()) == 0)// DELETED
+		{
+			body = "\r\nRessource has been deleted\r\n";
+			response.m_response.insert(response.m_response.end(), body.begin(), body.end());
+			m_response_code = 200;
+		}
+		else// NOT DELETED
+		{
+			PRINT_RED("File could't be deleted")<<std::endl;
+			body = "Ressource couldn't be deleted\r\n";
+			response.m_response.insert(response.m_response.end(), body.begin(), body.end());
+			m_error_code = 500;// ?? OU 403 Pa de permission si le parent n'a pas les permissions
+		}
+		response.m_content_type = "Content-Type: text/plain\r\n";
+	}
+}
+
+void	Request::clear()
+{
+	m_read.clear();
+	m_requestIsComplete = false;
+	m_method.clear();
+	m_uri.clear();
+	m_uriIsADirectory = false;
+	m_query.clear();
+	m_protocol.clear();
+	m_body_pos = 0;
+	m_error_code = 0;
+	m_response_code = 0;
+	m_headers.clear();
+}
+
 // A faire :
 //			-Test les headers avec curl
-//			-Implmenter une logique de reponse pour les erreurs
-//			-Implmenter une logique de reponse basique pourles requetes basiques
+//			-test method GET : Not Found, Pas de permission, Found different tests
+//			-test methode not supported / HTTP Version not Supported
+
+//			-Merge /
+//			-Implementations des fonctionnalites propre a la config
+//			-processPost()
+//			-Televersation de fichier [Avec Post (Peut etre utilise un CGI ?) ??]
+//			-Requetes fragmentees
+//			-CGI

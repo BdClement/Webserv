@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 11:52:42 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/17 12:58:35 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/21 20:26:11 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -21,17 +21,20 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 
 // C++ Versions of C Library
 #include <cstdlib>
 #include <csignal>
 #include <cstring>
 #include <cerrno>
+#include <ctime>
 
 // C++
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <fstream>
 
 // C++ STL
 #include <vector>
@@ -41,16 +44,19 @@
 // NB VALUES
 #define MAX_EVENTS		20
 #define URI_SIZE_MAX	2048
-#define BUFFER_SIZE		10
-// #define BUFFER_SIZE 	1024
+// #define BUFFER_SIZE		10
+#define BUFFER_SIZE 	1024
 //Mettre en place de taille pour chaque element ??
 //#define REQUESTLINE_MAX_SIZE 8192 // 8Ko =? 414 Request-URI Too Long
 #define HEADERLINE_MAX_SIZE 8192 // 8Ko => 431 Request Fields Too Large
 #define HEADERTOTAL_MAX_SIZE 16384 //16Ko => 431 Request Fields Too Large
 //#define REQUEST_MAX_SIZE 65536 //64Ko => 413 Payload Too Large
 
+#define TIMEOUT 30
+
 // SHORTCUT
-#define mapString	std::map<std::string, std::string>
+#define mapString		std::map<std::string, std::string>
+#define mapIntString	std::map<int, std::string>
 
 // DISPLAY
 #define RED_COLOR "\033[1;31m"
