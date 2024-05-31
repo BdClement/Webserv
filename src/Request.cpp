@@ -6,13 +6,13 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:29:28 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/22 20:21:51 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/31 20:28:29 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Request.hpp"
 
-Request::Request() : m_requestIsComplete(false), m_uriIsADirectory(false), m_body_pos(0), m_error_code(0), m_response_code(0), m_headers()
+Request::Request() : m_parsed(false), m_uriIsADirectory(false), m_body_pos(0), m_error_code(0), m_response_code(0), m_headers()
 {
 	// std::cout<<"Request constructor called"<<std::endl;
 }
@@ -20,7 +20,7 @@ Request::Request() : m_requestIsComplete(false), m_uriIsADirectory(false), m_bod
 Request::Request(Request const& asign)
 {
 	m_read = asign.m_read;
-	m_requestIsComplete = asign.m_requestIsComplete;
+	m_parsed = asign.m_parsed;
 	// std::cout<<"Request copy constructor called"<<std::endl;
 }
 
@@ -34,12 +34,17 @@ Request& Request::operator=(Request const & equal)
 	if (this != &equal)
 	{
 		m_read = equal.m_read;
-		m_requestIsComplete = equal.m_requestIsComplete;
+		m_parsed = equal.m_parsed;
 	}
 	return *this;
 }
 
-// A terminer. Logique du body a inclure
+/***********************************************************************************************************
+ *                                                                                                         *
+ *                                              PARSING REQUEST                                            *
+ *                                                                                                         *
+ ***********************************************************************************************************/
+
 void	Request::parseRequest()
 {
 	unsigned char	endOfHeaders[] = {'\r', '\n', '\r', '\n'};
@@ -47,29 +52,32 @@ void	Request::parseRequest()
 	it = std::search(this->m_read.begin(), this->m_read.end(), endOfHeaders, endOfHeaders + 4);
 	if (it != this->m_read.end())
 	{
-		m_body_pos = it - m_read.begin();
-		std::cout<<"START PARSING"<<std::endl;
+		if (m_body_pos == 0)// Pour pas le mettre a a jour a chaque fois / Je ne le mets pas direct a + 4car je ne sais pas si y'a vraiment un Body
+			m_body_pos = it - m_read.begin();
+		// std::cout<<"START PARSING"<<std::endl;
 		size_t startHeaders = parseRequestLine();
 		parseHeaders(startHeaders);
-		// Ajout d'une logique de BODY et d'une suite de body ??
-		m_requestIsComplete = true;// On ne gere pas pour l'instant de requete contenant un body
+		// Check_chunked !
+		// AJOUT ICI D'UNE LOGIQUE POUR REQUETE FRAGMENTEE
+		// qui mettrait m_parsed a true uniquement lors de la reception de la fin de requete fragmentee
+		// EN CAS DE REQUETE NON FRAGMENTEE
+		m_parsed = true;// Sous certaine conditions de checkChunked()
 	}
-	else
-		std::cout<<"La requete n'as pas encore ete lue jusqu'a la fin des Headers"<<std::endl;
-	// Ajouter Logique de timeout de Connection pour different cas
+	// else
+		// std::cout<<"La requete n'as pas encore ete lue jusqu'a la fin des Headers"<<std::endl;
 }
 
 // This function parse the RequestLine (the first one)
 // A good RequestLine request 3 elements [Method URI Protocol]
 size_t	Request::parseRequestLine()
 {
+	if (m_uri.size() != 0)
+		return 0;
 	std::string	requestLine(m_read.begin(), m_read.end());
 	size_t	pos = requestLine.find("\r\n");
 	// std::cout<<"Affichage de pos = ["<<m_read[pos + 2]<<"]"<<std::endl;
 	if (pos != std::string::npos)
 	{
-		// Checker la methode : 2 cas Not Implemented et Not Allowed
-		// Checker le protocole
 		std::string	line = requestLine.substr(0, pos);
 		size_t	space1 = line.find(' ');
 		size_t	space2 = line.find(' ', space1 + 1);
@@ -103,14 +111,6 @@ size_t	Request::parseRequestLine()
 	}
 	else
 		m_error_code = 400;
-	PRINT_GREEN("Resultat de fin de parsing de Request Line :")<<std::endl;
-	std::cout<<"method = "<<m_method<<std::endl;
-	std::cout<<"Uri = "<<m_uri<<std::endl;
-	std::cout<<"protocol = "<<m_protocol<<std::endl;
-	// std::string test("/MyPage.html?param1=salut&param2=cava");
-	// std::cout<<"Test de URI avec query string :"<<UriValid(test)<<std::endl;
-	// std::cout<<"Uri = "<<m_uri<<std::endl;
-	// std::cout<<"Query = "<<m_query<<std::endl;
 	return pos + 2;// Pour conserver la requete originale mais une fois que tout est bon modifier en supprimant ce qui a ete parser pour garder uniquement le body
 }
 
@@ -166,7 +166,7 @@ bool	Request::UriValid(std::string & uri)
 // It splits headers line by line and pass each line to HeaderLineValid for parsing
 void	Request::parseHeaders(size_t startHeaders)
 {
-	if (m_error_code != 0)// Check Error Parsing RequestLine
+	if (m_error_code != 0 || m_headers.size() != 0)// Check Error Parsing RequestLine
 		return;
 	std::string	Headers(m_read.begin() + startHeaders, m_read.end());
 	// CHECK DE LA SIZE DE L'ENSEMBLE DES HEADERS
@@ -199,12 +199,12 @@ void	Request::parseHeaders(size_t startHeaders)
 		initial_pos = pos + 2;
 	}
 	// m_body_pos est ok = Si il y a un Body, il start a m_body_pos + 4 [A CHECKER]
-	PRINT_GREEN("Resultat de fin de parsing des Headers :")<<std::endl;
-	mapString::iterator it;
-	for (it = m_headers.begin(); it != m_headers.end(); ++it)
-	{
-		std::cout<<it->first<<" "<<it->second<<std::endl;
-	}
+	// PRINT_GREEN("Resultat de fin de parsing des Headers :")<<std::endl;
+	// mapString::iterator it;
+	// for (it = m_headers.begin(); it != m_headers.end(); ++it)
+	// {
+	// 	std::cout<<it->first<<" "<<it->second<<std::endl;
+	// }
 }
 
 // This function checks HeaderLine's validity. Checks are size limit,and good syntax [key: value]
@@ -246,34 +246,77 @@ bool	Request::HeaderLineValid(std::string &header)
 	return true;
 }
 
-// This function specifies if a Request has to be interpreted as keep-alive connection or not
-// In fact only when header Connection specified close, it is not interpreted as keep-alive connection
-bool	Request::isKeepAlive()
+// This function checks the validity of Content-Length's value
+bool	Request::checkContentLengthValue(std::string & value, long long &content_length)
 {
-	mapString::iterator it = m_headers.find("Connection:");
-	if (it != m_headers.end())
+	char *end;
+	errno = 0;
+	try
 	{
-		// PRINT_GREEN("Connection: Header trouve")<<std::endl;
-		if (m_headers["Connection:"] == "close")
-			return false;
-		else
-			return true;
+		content_length = strtoll(value.c_str(), &end, 10);
+		if (end == value.c_str() || *end != '\0')
+			throw std::invalid_argument("Invalid Content-Length value");
+		if (content_length < 0 || content_length > INT_MAX)
+			throw std::out_of_range("Content-Length value out of range");
+	}
+	catch (const std::exception& e)
+	{
+		PRINT_RED(e.what())<<std::endl;
+		m_error_code = 400;
+		return false;
 	}
 	return true;
 }
+
+// This function check if the server is waiting for a Body and it has been completely read
+// To process Request
+void	Request::checkBody()
+{
+	// std::cout<<"Body position element == "<<m_read[m_body_pos]<<std::endl;
+	// std::cout<<" Body pos == "<<m_body_pos<<std::endl;
+	if (m_method == "POST") // Et not chunked surement
+	{
+		if (m_read.size() > m_body_pos + 4)// Place m_body_pos au debut du Body s'il y en a un
+			m_body_pos += 4;
+		mapString::iterator it = m_headers.find("Content-Length:");
+		if (it != m_headers.end())// Si Content-Length est present pour POST
+		{
+			long long content_length = 0;
+			// std::cout<<"Body = "<<m_read.size() - m_body_pos<<" pour un body de taille "<<it->second<<std::endl;
+			if (!checkContentLengthValue(it->second, content_length)) //Si la valeur de Content-Length est invalide
+				return ;
+			if (m_read.size() - m_body_pos < (unsigned long)content_length)// Si Content-Length n'a pas ete lu en entier
+				m_error_code = 400;
+			else if (m_read.size() - m_body_pos > (unsigned long)content_length)// Si plus que Content-Length a ete lu
+				m_error_code = 413;
+		}
+		else// Si Content-Length n'est pas present pour POST
+		{
+			PRINT_RED("Content-Length Pas prsent dans la requete");
+			m_error_code = 411;// Length Required
+		}
+	}
+}
+
+/***********************************************************************************************************
+ *                                                                                                         *
+ *                                              PROCESS REQUEST                                            *
+ *                                                                                                         *
+ ***********************************************************************************************************/
 
 void	Request::processRequest(std::vector<Config> & m_config, Response & response)
 {
 	// FIND VIRTUAL SERVER
 	// FIND LOCATION??
+	// Check CGI
 	if (m_method == "GET")
 		processGet(m_config[0], response);
+	else if (m_method == "POST")
+		processPost(m_config[0], response);
 	else if (m_method == "DELETE")
 		processDelete(m_config[0], response);
 	else
 		PRINT_RED("ERROR UNKOWN METHOD PASS PARSING ")<<m_method<<std::endl;
-	// else if (m_method == "POST")// a Ajouter entre GET et DELETE
-	// 	processPost(m_config[0], response);
 }
 
 // Attention Header Accept contenu ce qui est envoye ou renvoyer ??
@@ -283,9 +326,12 @@ void	Request::processGet(Config & config, Response & response)
 {
 	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
 	// Recherche du bloc Location ?
-	(void)config;
+	// Check CGI ou pas
+	if (m_error_code != 0)
+		return ;
 	// en vrai il faudrait trouver la base equivalent a "/test" ici dans l'objet config
 	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
+	(void)config;
 	std::string ressource = "test" + m_uri; // Attention au cas ou ressource est un Directory
 	if (!checkRessourceAccessibilty(ressource))
 		return ;
@@ -352,18 +398,14 @@ bool	Request::checkRessourceAccessibilty(std::string const & ressource)
 	return true;
 }
 
-// En cas de succes Message sous forme de text en tant que Body
-// "Data received and processed successfully."|| "File uploaded successfully."
-// void	processPost(Config & config)
-// {
-
-// }
-
 // This function process a Delete request. It checks ressource's accesibility and if the ressource
 // can be deleted it does it, otherwise it prepares error_code to send error_file
 void	Request::processDelete(Config & config, Response & response)
 {
 	(void)config;
+	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
+	// Recherche du bloc Location ?
+	// Check CGI ou pas => Error 405 ?
 	// Initialisation de ressource grace a la config
 	std::string ressource = "test" + m_uri;
 	if (!checkRessourceAccessibilty(ressource))
@@ -381,7 +423,7 @@ void	Request::processDelete(Config & config, Response & response)
 		else// NOT DELETED
 		{
 			PRINT_RED("File could't be deleted")<<std::endl;
-			body = "Ressource couldn't be deleted\r\n";
+			// body = "Ressource couldn't be deleted\r\n";
 			response.m_response.insert(response.m_response.end(), body.begin(), body.end());
 			m_error_code = 500;// ?? OU 403 Pa de permission si le parent n'a pas les permissions
 		}
@@ -389,10 +431,275 @@ void	Request::processDelete(Config & config, Response & response)
 	}
 }
 
+// En cas de succes Message sous forme de text en tant que Body
+// "Data received and processed successfully."|| "File uploaded successfully."
+void	Request::processPost(Config & config, Response & response)
+{
+	if (m_error_code != 0)// Si checkBody a detecte une erreur
+		return ;
+	(void)config;
+	(void)response;
+	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
+	// Recherche du bloc Location ?
+	// Check CGI ou pas
+	std::string ressource = "test" + m_uri;
+	PRINT_GREEN("processPost Called")<<std::endl;
+	std::vector<unsigned char>	request_body(m_read.begin() + m_body_pos, m_read.end());
+	mapString::iterator it = m_headers.find("Content-Type:");
+	if (it != m_headers.end() && (it->second.find("multipart/form-data") != std::string::npos))
+		processPostMultipart(extractBoundary(it->second), request_body);
+	else if (checkFileUpload()) // Televersement Simple A CHECKER !!!!!
+		uploadFile(request_body);
+	else// Rajouter la televersation Simple en dehors d'un formulaire HTML ?
+		stockData(request_body);
+}
+
+// This function checks if a file has to be uploaded by checking the Content-Disposition header
+// If it is present and contains a valid filename a file has to be uploaded
+bool	Request::checkFileUpload()
+{
+	mapString::iterator it = m_headers.find("Content-Disposition:");
+	if (it != m_headers.end())
+	{
+		extractFilename(it->second);
+		if (m_filename.size() != 0)
+			return true;
+	}
+	return false;
+}
+
+// This function store the body sent by the client in webserv's database
+void	Request::stockData(std::vector<unsigned char> const & body)
+{
+	// std::vector<unsigned char>	body(m_read.begin() + m_body_pos, m_read.end());
+	PRINT_RED("Le body extrait de m_read est de taille : ")<<body.size()<<std::endl;
+	FILE* file = fopen("test/DataBaseWebserv.txt", "ab");// en mode binaire append
+	if (!file)
+	{
+		PRINT_RED("Error : Imposible to open Webserv Data Base.")<<std::endl;
+		m_error_code = 500;
+		return ;
+	}
+	size_t written = fwrite(&body[0], 1, body.size(), file);
+	if (written != body.size())
+	{
+		PRINT_RED("Error writting file")<<std::endl;
+		m_error_code = 500;// ???
+	}
+	else
+	{
+		m_response_code = 201;// A checker
+		fputc('\n', file);
+	}
+	fclose(file);
+}
+
+// This function receive the Content-Disposition value and check if it contains a valid filename
+// If so, it stores it in the request object
+void	Request::extractFilename(std::string & toExtract)
+{
+	if (toExtract.find("filename=") == std::string::npos)
+		return ;
+	std::string filename = toExtract.substr(toExtract.find("filename=") + 9);
+	std::cout<<"filename = "<<filename;
+	if (filename[0] == '"')
+	{
+		filename = filename.substr(1);
+		std::cout<<"filename2 = "<<filename;
+		if (filename.find('"') == std::string::npos)
+			return ;
+		else
+		{
+			filename = filename.substr(0, filename.find('"'));
+			std::cout<<"filename3 = "<<filename;
+			if (filename.size() <= 255 && filename.find("..") == std::string::npos
+				&& filename.find("\\") == std::string::npos)
+				m_filename = filename;
+		}
+	}
+}
+
+// This function check if the ressource webserv has to create exists and create it
+// It fills it with body received in argument
+void	Request::uploadFile(std::vector<unsigned char> &boundary_body)
+{
+	if (boundary_body.size() == 0 || m_filename.size() == 0)
+		return ;
+	std::string location = "test/upload/" + m_filename;
+	if	(checkRessourceAccessibilty(location))
+	{
+		// Update m_error_code comme je le souhaite ??
+		return ;
+	}
+	else
+	{
+		FILE* file = fopen(location.c_str(), "wb");// en mode write binaire
+		if (!file)
+		{
+			PRINT_RED("Error : Imposible to open file.")<<std::endl;
+			m_error_code = 500;
+			return ;
+		}
+		size_t written = fwrite(&boundary_body[0], 1, boundary_body.size(), file);
+		if (written != boundary_body.size())
+		{
+			PRINT_RED("Error writting file.")<<std::endl;
+			m_error_code = 500;
+		}
+		else
+			m_response_code = 201;
+		fclose(file);
+	}
+}
+
+// This function is the main loop for processing each block of a multipart/form-data request
+// It splits each block and sends it to processPostBoundaryBlock()
+void	Request::processPostMultipart(std::string boundary, std::vector<unsigned char> & body)
+{
+	if (boundary.size() == 0)
+	{
+		m_error_code = 400;
+		return ;
+	}
+	PRINT_GREEN(boundary.c_str())<<std::endl;
+	std::string	end_boundary = boundary + "--";
+	std::vector<unsigned char>::iterator it = std::search(body.begin(), body.end(), boundary.begin(), boundary.end());
+	while (1)// Tant que le prochain boundary n'est pas le boundary de fin
+	{
+		if (it == body.begin())// EFFACE LE BOUNDARY DU DEBUT
+		{
+			PRINT_RED("Debut boundary to cut")<<std::endl;
+			body.erase(body.begin(), body.begin() + boundary.size() + 2); // supprime le boundary + "\r\n"
+		}
+		else
+			PRINT_RED("Debut positon is not a boundary")<<std::endl;
+		// PRINT_GREEN("Affichage de mon body tout au long de ma boucle")<<std::endl;
+		// for (std::vector<unsigned char>::iterator print = body.begin(); print != body.end(); ++print)// Affichage jusqu'au prochain boundary
+		// 	std::cout<<*print;
+		PRINT_GREEN("Affichage de mon block boundary")<<std::endl;//DECOUPE UN BLOCK
+		std::vector<unsigned char>::iterator next = std::search(body.begin(), body.end(), boundary.begin(), boundary.end());
+		// for (std::vector<unsigned char>::iterator test = body.begin(); test != next; ++test)// Affichage jusqu'au prochain boundary
+		// 	std::cout<<*test;
+		// TRAITEMENT DU BLOCK
+		std::vector<unsigned char> boundary_block(it, next);
+		processPostBoundaryBlock(boundary_block);
+		// EFFACE LE BLOCK DEJA TRAITE
+		body.erase(body.begin(), next);// On efface le block qui a ete traite
+		if (it == std::search(body.begin(), body.end(), end_boundary.begin(), end_boundary.end()))// a remettre dans le while ??????!!!
+			break ;
+	}
+	// Multipart impossible avec CGI ?
+}
+
+// Code de reponse :
+//		Si tout le monde reussit : 200 ou 201
+//		Tout le monde ne reussit pas mais certain reussisent : 400 prioritaire
+//		Tout le mond echoue : 400 Prioritaire si il yen a un sinon
+// This function recveive a multipart/form-data block, strores new headers from it thanks to updateHeaders()
+// Depending on new headers result, it process the request by storing data or upload file
+void	Request::processPostBoundaryBlock(std::vector<unsigned char> &boundary_block)
+{
+	// PRINT
+	PRINT_GREEN("Traitement du block boundary")<<std::endl;
+	// for (std::vector<unsigned char>::iterator it = boundary_block.begin(); it != boundary_block.end(); ++it)
+	// 	std::cout<<*it;
+	// SPLIT HEADERS / BODY
+	unsigned char	endOfHeaders[] = {'\r', '\n', '\r', '\n'};
+	std::vector<unsigned char>::iterator	it;
+	it = std::search(boundary_block.begin(), boundary_block.end(), endOfHeaders, endOfHeaders + 4);
+	if (it == boundary_block.end())
+	{
+		PRINT_RED("Pas de fin de Headers trouve dans le block boundary")<<std::endl;
+		m_error_code = 400;
+		return ;
+	}
+	// STRING CONTENANT L'ENSEMBLE DES HEADERS
+	// UPDATE m_headers
+	std::string boundary_headers(boundary_block.begin(), it + 4);
+	std::cout<<"Affichage des boundary headers ::   "<<boundary_headers<<std::endl;
+	if (it + 4 == boundary_block.end())// S'IL N'Y A PAS DE BODY
+	{
+		m_error_code = 400;
+		return ;
+	}
+	std::vector<unsigned char> boundary_body(it + 4, boundary_block.end());
+	std::cout<<"Affichage du boundary body : "<<std::endl;
+		for (std::vector<unsigned char>::iterator itest = boundary_body.begin(); itest != boundary_body.end(); ++itest)
+		std::cout<<*itest;
+	PRINT_RED("Arrivee ici c'est soit c'est un televersement soit un stockage chacal")<<std::endl;
+	updateHeaders(boundary_headers);
+	if (checkFileUpload())
+	{
+		PRINT_RED("UPLOAD MULTIPART")<<std::endl;
+		uploadFile(boundary_body);//Reset multi part a inserer ici je pense
+		resetMultipart();
+	}
+	else
+	{
+		PRINT_RED("STOCK DATA MULTIPART")<<std::endl;
+		stockData(boundary_body);
+	}
+}
+
+// This function reset Content-Disposition header and filename between 2 boundary bloks
+void	Request::resetMultipart()
+{
+	m_headers["Content-Disposition:"] = "";
+	m_filename = "";
+}
+
+// This function update Headers with block multipart's header
+void	Request::updateHeaders(std::string &boundary_headers)
+{
+	size_t start = 0;
+	size_t end = boundary_headers.find("\r\n");
+	while (end != (boundary_headers.size() - 2))
+	{
+		std::cout<< end + 2<<" == "<<boundary_headers.size()<<std::endl;
+		std::string b_header = boundary_headers.substr(start, end - start);
+		// std::cout<<"Affichage de ligne header boundary = "<<b_header<<std::endl;
+		HeaderLineValid(b_header);
+		start = end + 2;
+		end = boundary_headers.find("\r\n", start);
+	}
+}
+
+// This function extracts boundary that aim to split blocks in a multipart/form-data request
+std::string	Request::extractBoundary(std::string & contentTypeValue)
+{
+	std::string::size_type	boundary_start = contentTypeValue.find("boundary=");
+	if (boundary_start != std::string::npos)
+		return "--" + contentTypeValue.substr(boundary_start + 9) ;
+	else
+		return "";
+}
+
+/***********************************************************************************************************
+ *                                                                                                         *
+ *                                                MAINTENANCE                                              *
+ *                                                                                                         *
+ ***********************************************************************************************************/
+
+// This function specifies if a Request has to be interpreted as keep-alive connection or not
+// In fact only when header Connection specified close, it is not interpreted as keep-alive connection
+bool	Request::isKeepAlive()
+{
+	mapString::iterator it = m_headers.find("Connection:");
+	if (it != m_headers.end())
+	{
+		// PRINT_GREEN("Connection: Header trouve")<<std::endl;
+		if (m_headers["Connection:"] == "close")
+			return false;
+		else
+			return true;
+	}
+	return true;
+}
+
 void	Request::clear()
 {
 	m_read.clear();
-	m_requestIsComplete = false;
+	m_parsed = false;
 	m_method.clear();
 	m_uri.clear();
 	m_uriIsADirectory = false;
@@ -412,6 +719,9 @@ void	Request::clear()
 //			-Merge /
 //			-Implementations des fonctionnalites propre a la config
 //			-processPost()
-//			-Televersation de fichier [Avec Post (Peut etre utilise un CGI ?) ??]
+//			-Televersation de fichier [Avec Post (Peut etre utilise un CGI ?) ? A CHECKER !!!?]
 //			-Requetes fragmentees
 //			-CGI
+
+//			-Gerer les code de reponse pour multipart !
+//			-Faire de multiple tests : Upload seul, stock seul , multipart

@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 12:55:53 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/22 20:24:30 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/31 19:36:05 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -293,7 +293,7 @@ void	Handler::launchServer()
 					acceptIncomingConnection(events[i].data.fd);
 				else// LOGIQUE DE GESTION DE SOCKET DE COMMUNICATION
 				{
-					std::cout<<"\n=== Handling event... ===\n"<<std::endl;
+					// std::cout<<"\n=== Handling event... ===\n"<<std::endl;
 					// On retrouve l'objet Connection associe a la socket qui recoit un evenement
 					int	index = recoverIndexConnection(events[i].data.fd);
 					if (index == -1)
@@ -301,10 +301,9 @@ void	Handler::launchServer()
 						PRINT_RED("\tConnection recovery failed")<<std::endl;
 						continue;
 					}
-					// Logique de gestion des evenements
+					// Logique de gestion des evenements // A Modifier else if ? =>PB avec Body inutile
 					if (events[i].events & EPOLLIN)
 						handlingEpollinEvent(m_http_connection[index]);
-						// handlingEpollinEvent(index);
 					else if (events[i].events & EPOLLOUT)
 						handlingEpolloutEvent(m_http_connection[index]);
 					else if (events[i].events & EPOLLERR)
@@ -328,12 +327,12 @@ void	Handler::launchServer()
 // and add the socket to epoll
 void	Handler::acceptIncomingConnection(int const socket)
 {
-	std::cout<<"\n=== Accept connection from listenning socket... ===\n"<<std::endl;
-	std::cout<<"[ Event detected on listenning socket "<<socket<<"\n";
+	// std::cout<<"\n=== Accept connection from listenning socket... ===\n"<<std::endl;
+	// std::cout<<"[ Event detected on listenning socket "<<socket<<"\n";
 	Connection new_connection;
 	socklen_t	client_len = sizeof(new_connection.interface);
 	new_connection.socket = accept(socket, (struct sockaddr *)&(new_connection.interface), &client_len);
-	std::cout<<"  New connection established : ";
+	// std::cout<<"  New connection established : ";
 	if (new_connection.socket == -1)
 	{
 		PRINT_RED("Failed ")<<": "<<strerror(errno)<<std::endl;
@@ -341,11 +340,11 @@ void	Handler::acceptIncomingConnection(int const socket)
 	}
 	else
 	{
-		PRINT_GREEN("Success")<<" : socket "<<new_connection.socket<<"\n";
+		// PRINT_GREEN("Success")<<" : socket "<<new_connection.socket<<"\n";
 		// if (fcntl(new_connection.socket, F_SETFL, O_NONBLOCK) < 0)
 		// {
 		// 	PRINT_RED("Error O_NONBLOCK failed on socket")<<" : Connection established closed"<<std::endl;
-		// 	close(new_connection.socket);
+		// 	closeAndRmConnection(new_connection);
 		// 	return ;
 		// }
 		// else
@@ -356,7 +355,7 @@ void	Handler::acceptIncomingConnection(int const socket)
 		if (epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, new_connection.socket, &(new_connection.event)) == -1)
 			PRINT_RED("Failed ")<<": "<<strerror(errno)<<" ]"<<std::endl;
 		else
-			PRINT_GREEN("Success")<<" ]"<<std::endl;
+			// PRINT_GREEN("Success")<<" ]"<<std::endl;
 		m_http_connection.push_back(new_connection);
 	}
 }
@@ -370,7 +369,7 @@ void	Handler::handlingEpollinEvent(Connection & connection)
 	// SET TIME KEEP-ALIVE
 	connection.last_active_time = time(NULL);
 	// READ
-	std::cout<<"[ Event EPOLLIN detected on socket "<<connection.socket<<std::endl;
+	// std::cout<<"[ Event EPOLLIN detected on socket "<<connection.socket<<std::endl;
 	unsigned char	buffer[BUFFER_SIZE];
 	memset(buffer, '\0', sizeof(buffer));
 	int bytes_read = recv(connection.socket, buffer, sizeof(buffer), 0);
@@ -390,49 +389,40 @@ void	Handler::handlingEpollinEvent(Connection & connection)
 	}
 	else
 	{
+		// Ajouter une lecture pour determiner si il reste de la donnee a lire
 		//PARSE REQUEST
 		connection.request.m_read.insert(connection.request.m_read.end(), buffer, buffer + bytes_read);
-		std::cout<<"\nMessage received :\n["<<std::endl;
-		for (std::vector<unsigned char>::iterator it = connection.request.m_read.begin(); it != connection.request.m_read.end(); ++it)// AFFICHAGE DE TEST
-			std::cout<<*it;
-		std::cout<<"]"<<std::endl;
+		// std::cout<<"\nMessage received :\n["<<std::endl;
+		// for (std::vector<unsigned char>::iterator it = connection.request.m_read.begin(); it != connection.request.m_read.end(); ++it)// AFFICHAGE DE TEST
+		// 	std::cout<<*it;
+		// std::cout<<"]"<<std::endl;
 		connection.request.parseRequest();
-		if (connection.request.m_requestIsComplete)
-		{
-			std::cout<<"[ Logique de traitement de requete ]"<<std::endl;
-			connection.request.processRequest(m_config, connection.response);
-			//GENERATE RESPONSE => Objet Connection Concerne, Vector de Config
-			std::cout<<"[ Logique de generation de reponse HTTP ]"<<std::endl;
-			connection.response.generateResponse(connection.request);
-			// sleep(5);
-			// PRINT_GREEN("\n\n  FIN DU SLEEP DE TRAITEMENT DE REQUETE\n")<<std::endl;
-			// DES QUE LA REPONSE EST PRETE
-			// |= "ou" binaire avec assignation. Permet de combiner les bits deja presents au bit EPOLLOUT que l'on ajoute
-			connection.event.events |= EPOLLOUT;
-			// On declare qu'on est pret a repondre sur la socket concernee (A voir avec les requetes fragmentees)
-			if (epoll_ctl(this->epoll_fd, EPOLL_CTL_MOD, connection.socket, &(connection.event)) == -1)
-				PRINT_RED("  Adding EPOLLOUT to watched event failed :")<<" socket "<<connection.socket<<std::endl;
-			else
-				PRINT_GREEN("  Adding EPOLLOUT to watched event")<<" socket "<<connection.socket<<std::endl;
-		}
+		//m_requestIsComplete cas :
+		//	-GET ,POST ou DELETE avec les Headers on lira et stockera les Body qui seront uniquement traiter pour POST
+		//	-En cas de requetes fragmentees on attend le fragement vide pour les 3 methodes + gestion de reconstituion
+		// END OF PARSING
+		if (connection.request.m_parsed)
+			addEpollout(connection);
+		// Penser peut etre a une generation de reponse ici pour GET et DELETE plutot que dans handleEpollout ?
 	}
 }
 
-// Attention a la gestion des requetes fragmentees
-// Clean connection en cas d'erreur d'envoi de la requete
-// This Function sends the response on the socket and remove EPOLLOUT event on this socket as the reponse has been sent
-void	Handler::handlingEpolloutEvent(Connection & connection)
+void	Handler::addEpollout(Connection & connection)
 {
-	std::cout<<"  Event EPOLLOUT detected on socket "<<connection.socket<<std::endl;
-	const unsigned char* rep = &(connection.response.m_response[0]);
-	PRINT_GREEN("Contenu de ce qui a ete envoye = ")<<std::endl;
-	for (std::vector<unsigned char>::iterator it = connection.response.m_response.begin(); it != connection.response.m_response.end(); ++it)
-		std::cout<<*it;
-	std::cout<<std::endl;
-	if (send(connection.socket, rep, connection.response.m_response.size(), 0) == -1)
-		PRINT_RED("  ERROR couldnt send response")<<std::endl;
-	else
-		PRINT_GREEN(" Response sent")<<std::endl;
+	if (!(connection.event.events & EPOLLOUT))
+	{
+		// |= "ou" binaire avec assignation. Permet de combiner les bits deja presents au bit EPOLLOUT que l'on ajoute
+		connection.event.events |= EPOLLOUT;
+		// On declare qu'on est pret a repondre sur la socket concernee (A voir avec les requetes fragmentees)
+		if (epoll_ctl(this->epoll_fd, EPOLL_CTL_MOD, connection.socket, &(connection.event)) == -1)
+			PRINT_RED("  Adding EPOLLOUT to watched event failed :")<<" socket "<<connection.socket<<std::endl;// Fermer la connetion ?
+		// else
+			// PRINT_GREEN("  Adding EPOLLOUT to watched event")<<" socket "<<connection.socket<<std::endl;
+	}
+}
+
+void	Handler::rmEpollout(Connection & connection)
+{
 	// &= ~ "et" binaire avec negation de EPOLLOUT et assignation
 	// Cela permet de supprimer le bit EPOLLOUT en inversant sa valeur
 	connection.event.events &= ~EPOLLOUT;
@@ -442,15 +432,40 @@ void	Handler::handlingEpolloutEvent(Connection & connection)
 		PRINT_RED("  Removing EPOLLOUT to watched event failed :")<<" socket "<<connection.socket<<"]"<<std::endl;
 		closeAndRmConnection(connection);//Fermeture car surement boucle infinie de EPOLLOUT
 	}
+	// else
+		// PRINT_GREEN("  Removing EPOLLOUT to watched event")<<" socket "<<connection.socket<<"]"<<std::endl;
+}
+
+// Attention a la gestion des requetes fragmentees
+// Clean connection en cas d'erreur d'envoi de la requete
+// This Function sends the response on the socket and remove EPOLLOUT event on this socket as the reponse has been sent
+void	Handler::handlingEpolloutEvent(Connection & connection)
+{
+	// std::cout<<"  Event EPOLLOUT detected on socket "<<connection.socket<<std::endl;
+	// PARSE BODY ONLY FOR POST
+	connection.request.checkBody();
+	// std::cout<<"[ Logique de traitement de requete ]"<<std::endl;
+	connection.request.processRequest(m_config, connection.response);
+	// std::cout<<"[ Logique de generation de reponse HTTP ]"<<std::endl;
+	connection.response.generateResponse(connection.request);
+	// SENDING RESPONSE
+	const unsigned char* rep = &(connection.response.m_response[0]);
+	PRINT_GREEN("Contenu de ce qui a ete envoye = ")<<std::endl;
+	for (std::vector<unsigned char>::iterator it = connection.response.m_response.begin(); it != connection.response.m_response.end(); ++it)
+		std::cout<<*it;
+	std::cout<<std::endl;
+	if (send(connection.socket, rep, connection.response.m_response.size(), 0) == -1)
+		PRINT_RED("  ERROR couldnt send response")<<std::endl;
 	else
-		PRINT_GREEN("  Removing EPOLLOUT to watched event")<<" socket "<<connection.socket<<"]"<<std::endl;
+		PRINT_GREEN(" Response sent")<<std::endl;
+	rmEpollout(connection);
 	// Si !keep alive dans la requete  => close connection
 	if (!connection.request.isKeepAlive())
 		closeAndRmConnection(connection);
-	else
+	else // A conditionner avec requetes fragmentees
 	{
-		connection.response.clear();
 		connection.request.clear();
+		connection.response.clear();
 	}
 }
 

@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 11:52:42 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/21 20:26:11 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/30 15:59:50 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -29,6 +29,8 @@
 #include <cstring>
 #include <cerrno>
 #include <ctime>
+#include <climits>
+#include <cstdio>
 
 // C++
 #include <iostream>
@@ -44,7 +46,7 @@
 // NB VALUES
 #define MAX_EVENTS		20
 #define URI_SIZE_MAX	2048
-// #define BUFFER_SIZE		10
+// #define BUFFER_SIZE		1
 #define BUFFER_SIZE 	1024
 //Mettre en place de taille pour chaque element ??
 //#define REQUESTLINE_MAX_SIZE 8192 // 8Ko =? 414 Request-URI Too Long

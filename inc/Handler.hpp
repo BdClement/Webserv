@@ -46,6 +46,8 @@ class Handler
 	void	launchServer();
 	void	acceptIncomingConnection(int const socket);
 	void	handlingEpollinEvent(Connection & connection);
+	void	addEpollout(Connection & connection);
+	void	rmEpollout(Connection & connection);
 	void	handlingEpolloutEvent(Connection & connection);
 	void	handlingEpollerrEvent(Connection & connection);
 

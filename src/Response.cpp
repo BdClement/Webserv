@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/17 16:05:07 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/22 19:32:46 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/05/29 19:18:06 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -46,6 +46,8 @@ void	Response::set_error_file()
 	m_error_file[403] = "test/error/403Forbidden.html";
 	m_error_file[404] = "test/error/404NotFound.html";
 	m_error_file[405] = "test/error/405MethodNotAllowed.html";
+	m_error_file[411] = "test/error/411LengthRequired.html";
+	m_error_file[413] = "test/error/413PayloadTooLarge.html";
 	m_error_file[414] = "test/error/414UriTooLarge.html";
 	m_error_file[415] = "test/error/UriTooLarge.html";
 	m_error_file[431] = "test/error/RequestHeaderFieldsTooLarge.html";
@@ -67,6 +69,8 @@ void	Response::set_code_meaning()
 	m_code_meaning[401] = "Unauthorized";// Authentification nécessaire et non fournie ??
 	m_code_meaning[403] = "Forbidden";//Serveur a compris la requête mais refuse de l'autoriser
 	m_code_meaning[404] = "Not Found";//La ressource demandée n'a pas été trouvée
+	m_code_meaning[411] = "Length Required";
+	m_code_meaning[413] = "Payload Too Large";
 	m_code_meaning[414] = "Uri Too Large";
 	m_code_meaning[405] = "Method Not Allowed";//La méthode demandée n'est pas autorisée pour la ressource
 	m_code_meaning[500] = "Internal Server Error";//Erreur interne du serveur
@@ -77,10 +81,11 @@ void	Response::set_code_meaning()
 
 void	Response::generateResponse(Request & request)
 {
-	if (request.m_error_code != 0)
-		generateErrorBody(request);
-	generateHeaders(request);
-	generateStatusLine(request);
+		if (request.m_error_code != 0)
+			generateErrorBody(request);
+		generateHeaders(request);
+		generateStatusLine(request);
+		request.m_body_pos = 0;
 }
 
 // This function generate Response's Status Line
