@@ -6,13 +6,13 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:29:28 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/31 20:28:29 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/06 19:23:22 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Request.hpp"
 
-Request::Request() : m_parsed(false), m_uriIsADirectory(false), m_body_pos(0), m_error_code(0), m_response_code(0), m_headers()
+Request::Request() : m_ready(false), m_chunked(false), m_end_of_chunked(false), m_uriIsADirectory(false), m_body_pos(0), m_error_code(0), m_response_code(0), m_headers()//, m_left_to_read(0), m_already_stocked(0)
 {
 	// std::cout<<"Request constructor called"<<std::endl;
 }
@@ -20,7 +20,7 @@ Request::Request() : m_parsed(false), m_uriIsADirectory(false), m_body_pos(0), m
 Request::Request(Request const& asign)
 {
 	m_read = asign.m_read;
-	m_parsed = asign.m_parsed;
+	m_ready = asign.m_ready;
 	// std::cout<<"Request copy constructor called"<<std::endl;
 }
 
@@ -34,7 +34,7 @@ Request& Request::operator=(Request const & equal)
 	if (this != &equal)
 	{
 		m_read = equal.m_read;
-		m_parsed = equal.m_parsed;
+		m_ready = equal.m_ready;
 	}
 	return *this;
 }
@@ -57,14 +57,140 @@ void	Request::parseRequest()
 		// std::cout<<"START PARSING"<<std::endl;
 		size_t startHeaders = parseRequestLine();
 		parseHeaders(startHeaders);
-		// Check_chunked !
-		// AJOUT ICI D'UNE LOGIQUE POUR REQUETE FRAGMENTEE
-		// qui mettrait m_parsed a true uniquement lors de la reception de la fin de requete fragmentee
-		// EN CAS DE REQUETE NON FRAGMENTEE
-		m_parsed = true;// Sous certaine conditions de checkChunked()
+		handleChunked();
+		if (!m_chunked)
+			m_ready = true;
+		// else
+			//Logique de Parsing de ce qui vient d'etre lu
+		else if (m_end_of_chunked)
+		{
+			// PRINT_GREEN("Ici devra etre mis en place un parsing special de Body Pour cleaner les chunked")<<std::endl;
+			m_ready = true;
+		}
 	}
 	// else
 		// std::cout<<"La requete n'as pas encore ete lue jusqu'a la fin des Headers"<<std::endl;
+}
+
+// Checker si le client peut envoyer une nouvelle requete alors qu'il na pas eud e reponse a la precedente DISCORD
+// Attention cas ou le chunked de fin est recu et donc on repond a la requete mais que de la donnee est encore envoye sur la socket
+// This function handle chunked request by extracting chunked body of different chunked part in a tmp vector<unsigned char> to use it as a normal Body
+// While webserv stocks the received request, it parses the body. When one or more chunked are full (Size in hexadecimal : Chunked Body of defined size),
+// It exctracts each chunked body until last chunked is received
+void	Request::handleChunked()
+{
+	if (m_chunked && (m_read.size() > m_body_pos + 4) && m_error_code == 0)// Si c'est une request Chunked, qu'on a un Body et aucune erreur
+	{
+		// std::cout<<"\n\nTEST [Appel a la fonction handleChunked()]"<<std::endl;
+		std::vector<unsigned char>::iterator bodyStart = m_read.begin() + m_body_pos + 4;
+		const std::string crlf = "\r\n";
+		int	pos = 0;
+		while (1)
+		{
+			// std::cout<<"TEST [Debut de boucle] pos = "<<pos<<std::endl;
+			if (m_end_of_chunked) // Cas ou on recoit encore alors qu'on a atteint deja le chunk de fin
+			{
+				m_error_code = 400;
+				return ;
+			}
+			// CHECK LA PRESENCE D'UN HEXA POTENTIEL
+			// std::cout<<"TEST [Pas de body en surplus] pos = "<<pos<<std::endl;
+			std::vector<unsigned char>::iterator it = std::search(bodyStart + pos, m_read.end(), crlf.begin(), crlf.end());
+			if (it == m_read.end())
+			{
+				m_read.erase(bodyStart, bodyStart + pos);
+				break ;
+			}
+			// std::cout<<"TEST [verification dun CRLF de fin de hexa] pos = "<<pos<<std::endl;
+			// CHECK VALIDITE L'HEXA
+			std::string	hexaStr = std::string(bodyStart + pos, it);
+			int	size = hexaToInt(hexaStr);
+			// std::cout<<"Affichage de hexaStr = "<<hexaStr<<std::endl;
+			// std::cout<<"Affichage de hexa convertit en int  = "<<size<<std::endl;
+			if (size == -1)
+			{
+				m_end_of_chunked = true;
+				return ;
+			}
+			// std::cout<<"TEST [size correcte] pos = "<<pos<<std::endl;
+			pos += hexaStr.size() + 2;// Ajout du CRLF
+			// CHECK SI LE CHUNK EST COMPLET
+			if (std::distance(bodyStart + pos, m_read.end()) < size + 2)
+			{
+				m_read.erase(bodyStart, bodyStart + pos - (hexaStr.size() + 2));
+				break;
+			}
+			// std::cout<<"TEST [Assez de taille pour un Content complet] pos = "<<pos<<std::endl;
+			// CHECK DU FORMAT CRLF A LA FIN DU BODY CHUNKED
+			if (bodyStart + pos + size != std::search(bodyStart + pos + size, m_read.end(), crlf.begin(), crlf.end()))
+			{
+				m_end_of_chunked = true;
+				m_error_code = 400;
+				return ;
+			}
+			// std::cout<<"TEST [Format CRLF apres le content ] pos = "<<pos<<std::endl;
+			if (size == 0)
+			{
+				lastChunk(bodyStart, pos, size);
+				return ;
+			}
+			// std::cout<<"TEST[Not lastChunk on insert dans chunked_body] pos = "<<pos<<std::endl;
+			m_chunked_body.insert(m_chunked_body.end(), bodyStart + pos, bodyStart + pos + size);
+			pos += size + 2;
+		}
+	}
+}
+
+// This function is called when last chunk is found. It clears read request body, put instead unchunked body
+// and clear the vector that stored unchunked body
+void	Request::lastChunk(std::vector<unsigned char>::iterator & bodyStart, int pos, int size)
+{
+	m_end_of_chunked = true;
+	if (m_chunked_body.size() == 0)// Cas d'une requete Chunked vide (directement chunk vide)
+	{
+		m_error_code = 400;
+		return ;
+	}
+	// std::cout<<"AFFICAHE DE CE QUI A ETE RECU ET TRAITER DANS lastCHUNK :"<<std::endl;
+	// for (std::vector<unsigned char>::iterator print = bodyStart; print != bodyStart + pos + size + 2; ++print)// AFFICHAGE DE TEST
+	// 	std::cout<<*print;
+	m_read.erase(bodyStart, bodyStart + pos + size + 2);
+	if (bodyStart != m_read.end())// On a de la donnee apres le chunk de fin
+	{
+		m_error_code = 400;
+		return ;
+	}
+	m_read.insert(m_read.end(), m_chunked_body.begin(), m_chunked_body.end());
+	m_chunked_body.erase(m_chunked_body.begin(), m_chunked_body.end());
+	m_body_pos += 4;
+	return ;
+}
+
+// curl -X POST -d "" http://example.com/path
+// This function convert a string representing an hexadecimal number in int
+int	Request::hexaToInt(std::string const & toConvert)
+{
+	if (toConvert.empty())
+	{
+		// PRINT_RED("Empty string to Convert in hexadecimal")<<std::endl;
+		m_error_code = 400;
+		return -1;
+	}
+	char *end;
+	long int	result = strtol(toConvert.c_str(), &end, 16);
+	if (end == toConvert.c_str() || *end != '\0')
+	{
+		// PRINT_RED("Invalid digits found in string hexadecimal")<<std::endl;
+		m_error_code = 400;
+		return -1;
+	}
+	if (result > INT_MAX || result < 0)
+	{
+		// PRINT_RED("Hexa value out of rnge for int")<<std::endl;
+		m_error_code = 400;
+		return -1;
+	}
+	return static_cast<int>(result);
 }
 
 // This function parse the RequestLine (the first one)
@@ -95,14 +221,14 @@ size_t	Request::parseRequestLine()
 			m_protocol = line.substr(space2 + 1);
 			if (!MethodAllowed(m_method))
 			{
-				PRINT_RED("Method Not Allowed")<<std::endl;
+				// PRINT_RED("Method Not Allowed")<<std::endl;
 				m_error_code = 405;
 			}
 			else if (!UriValid(uri))
 				return 0;
 			else if (!ProtocolValid(m_protocol))
 			{
-				PRINT_RED("Protocol Not Supported")<<std::endl;
+				// PRINT_RED("Protocol Not Supported")<<std::endl;
 				m_error_code = 505;
 			}
 		}
@@ -136,7 +262,7 @@ bool	Request::UriValid(std::string & uri)
 	if (uri.size() > URI_SIZE_MAX)
 	{
 		m_error_code = 414;
-		PRINT_RED("URI is too large")<<std::endl;
+		// PRINT_RED("URI is too large")<<std::endl;
 		return false;
 	}
 	// Split URI & Query
@@ -173,13 +299,13 @@ void	Request::parseHeaders(size_t startHeaders)
 	if (Headers.size() == 0)
 	{
 		m_error_code = 400;
-		PRINT_RED("WARNING : No Headers, Suspicious activity")<<std::endl;
+		// PRINT_RED("WARNING : No Headers, Suspicious activity")<<std::endl;
 		return ;
 	}
 	else if (Headers.size() > HEADERTOTAL_MAX_SIZE)
 	{
 		m_error_code = 431;
-		PRINT_RED("Request Headers Fields Too Large")<<std::endl;
+		// PRINT_RED("Request Headers Fields Too Large")<<std::endl;
 		return ;
 	}
 	size_t initial_pos = 0;
@@ -216,14 +342,14 @@ bool	Request::HeaderLineValid(std::string &header)
 	if (header.size() > HEADERLINE_MAX_SIZE)
 	{
 		m_error_code = 431;
-		PRINT_RED("Request Fields Too Large")<<std::endl;
+		// PRINT_RED("Request Fields Too Large")<<std::endl;
 		return false;
 	}
 	// SPLIT DE HEADERLINE POUR CHECKER LE FORMAT [key: value]
 	size_t	space = header.find(' ');
 	if (space == std::string::npos)// NO SPACE ON HEADERLINE
 	{
-		std::cout<<"No space in header line => Wrong syntax"<<std::endl;
+		// std::cout<<"No space in header line => Wrong syntax"<<std::endl;
 		m_error_code = 400;
 		return false;
 	}
@@ -233,7 +359,7 @@ bool	Request::HeaderLineValid(std::string &header)
 		if (key[key.size() - 1] != ':')// PAS DE ":" A A FIN DE KEY dans [key: value]
 		{
 			m_error_code = 400;
-			PRINT_RED("PAS LA BONNE SYNTAXE")<<" Last element de key: == "<<key[key.size() - 1]<<std::endl;
+			// PRINT_RED("PAS LA BONNE SYNTAXE")<<" Last element de key: == "<<key[key.size() - 1]<<std::endl;
 			return false;
 		}
 		// else
@@ -242,6 +368,11 @@ bool	Request::HeaderLineValid(std::string &header)
 		// std::cout<<"Format [key:][value] == ["<<key<<"]["<<value<<"]"<<std::endl;
 		// STOCKAGE DU HEADER
 		m_headers[key] = value;
+		if (key == "Transfer-Encoding:" && value == "chunked")
+		{
+			// PRINT_GREEN("La requete est chunked")<<std::endl;
+			m_chunked = true;
+		}
 	}
 	return true;
 }
@@ -258,6 +389,11 @@ bool	Request::checkContentLengthValue(std::string & value, long long &content_le
 			throw std::invalid_argument("Invalid Content-Length value");
 		if (content_length < 0 || content_length > INT_MAX)
 			throw std::out_of_range("Content-Length value out of range");
+		if (content_length == 0)// On ne permet pas de content length 0 ?? Ou sinon rajouter une condition dans generateResponse Quand aucun error_code ni response code
+		{//							n'est present on met automatiquement 400 ??
+			m_error_code = 400;
+			return false;
+		}
 	}
 	catch (const std::exception& e)
 	{
@@ -274,10 +410,10 @@ void	Request::checkBody()
 {
 	// std::cout<<"Body position element == "<<m_read[m_body_pos]<<std::endl;
 	// std::cout<<" Body pos == "<<m_body_pos<<std::endl;
-	if (m_method == "POST") // Et not chunked surement
+	if (m_method == "POST" && !m_chunked)
 	{
-		if (m_read.size() > m_body_pos + 4)// Place m_body_pos au debut du Body s'il y en a un
-			m_body_pos += 4;
+		if (m_read.size() > m_body_pos + 4)// Place m_body_pos au debut du Body s'il y en a un //  A RETIRER
+			m_body_pos += 4; // A tester cas de POST SANS BODY
 		mapString::iterator it = m_headers.find("Content-Length:");
 		if (it != m_headers.end())// Si Content-Length est present pour POST
 		{
@@ -285,6 +421,7 @@ void	Request::checkBody()
 			// std::cout<<"Body = "<<m_read.size() - m_body_pos<<" pour un body de taille "<<it->second<<std::endl;
 			if (!checkContentLengthValue(it->second, content_length)) //Si la valeur de Content-Length est invalide
 				return ;
+			// std::cout<<"readSize | BodyPos | contentLength == "<<m_read.size()<<"  "<<m_body_pos<<"  "<<content_length<<std::endl;
 			if (m_read.size() - m_body_pos < (unsigned long)content_length)// Si Content-Length n'a pas ete lu en entier
 				m_error_code = 400;
 			else if (m_read.size() - m_body_pos > (unsigned long)content_length)// Si plus que Content-Length a ete lu
@@ -292,7 +429,7 @@ void	Request::checkBody()
 		}
 		else// Si Content-Length n'est pas present pour POST
 		{
-			PRINT_RED("Content-Length Pas prsent dans la requete");
+			// PRINT_RED("Content-Length Pas prsent dans la requete");
 			m_error_code = 411;// Length Required
 		}
 	}
@@ -315,8 +452,6 @@ void	Request::processRequest(std::vector<Config> & m_config, Response & response
 		processPost(m_config[0], response);
 	else if (m_method == "DELETE")
 		processDelete(m_config[0], response);
-	else
-		PRINT_RED("ERROR UNKOWN METHOD PASS PARSING ")<<m_method<<std::endl;
 }
 
 // Attention Header Accept contenu ce qui est envoye ou renvoyer ??
@@ -327,8 +462,6 @@ void	Request::processGet(Config & config, Response & response)
 	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
 	// Recherche du bloc Location ?
 	// Check CGI ou pas
-	if (m_error_code != 0)
-		return ;
 	// en vrai il faudrait trouver la base equivalent a "/test" ici dans l'objet config
 	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
 	(void)config;
@@ -343,8 +476,8 @@ void	Request::processGet(Config & config, Response & response)
 		m_error_code = 500;// Checker d'autres cas possibles ?
 		return ;
 	}
-	else
-		PRINT_GREEN("Ressource trouvee : ")<<ressource<<std::endl;
+	// else
+	// 	PRINT_GREEN("Ressource trouvee : ")<<ressource<<std::endl;
 	response.m_response = std::vector<unsigned char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 	response.m_body_size = response.m_response.size();
 	m_response_code = 200;// A voir les cas de variantes ??
@@ -362,7 +495,8 @@ bool	Request::checkRessourceAccessibilty(std::string const & ressource)
 	if (stat(ressource.c_str(), &s) != 0)// La ressource n'existe pas
 	{
 		PRINT_RED("Ressource doesn't exist")<<std::endl;
-		m_error_code = 404;
+		if (m_method != "POST")
+			m_error_code = 404;
 		return false;
 	}
 	// DIRECTORY
@@ -424,7 +558,7 @@ void	Request::processDelete(Config & config, Response & response)
 		{
 			PRINT_RED("File could't be deleted")<<std::endl;
 			// body = "Ressource couldn't be deleted\r\n";
-			response.m_response.insert(response.m_response.end(), body.begin(), body.end());
+			// response.m_response.insert(response.m_response.end(), body.begin(), body.end());
 			m_error_code = 500;// ?? OU 403 Pa de permission si le parent n'a pas les permissions
 		}
 		response.m_content_type = "Content-Type: text/plain\r\n";
@@ -435,23 +569,33 @@ void	Request::processDelete(Config & config, Response & response)
 // "Data received and processed successfully."|| "File uploaded successfully."
 void	Request::processPost(Config & config, Response & response)
 {
-	if (m_error_code != 0)// Si checkBody a detecte une erreur
-		return ;
 	(void)config;
 	(void)response;
 	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
 	// Recherche du bloc Location ?
 	// Check CGI ou pas
-	std::string ressource = "test" + m_uri;
-	PRINT_GREEN("processPost Called")<<std::endl;
+	// PRINT_GREEN("BODY RECEIVED SIZE : ")<<std::distance(m_read.begin() + m_body_pos, m_read.end())<<std::endl;
+	// std::cout<<"\nRequest received :\n["<<std::endl;
+	// for (std::vector<unsigned char>::iterator it = m_read.begin(); it != m_read.end(); ++it)// AFFICHAGE DE TEST
+	// 		std::cout<<*it;
+	// std::cout<<" ]"<<std::endl;
+	// std::string ressource = "test" + m_uri;
+	// PRINT_GREEN("processPost Called")<<std::endl;
 	std::vector<unsigned char>	request_body(m_read.begin() + m_body_pos, m_read.end());
 	mapString::iterator it = m_headers.find("Content-Type:");
 	if (it != m_headers.end() && (it->second.find("multipart/form-data") != std::string::npos))
 		processPostMultipart(extractBoundary(it->second), request_body);
 	else if (checkFileUpload()) // Televersement Simple A CHECKER !!!!!
 		uploadFile(request_body);
-	else// Rajouter la televersation Simple en dehors d'un formulaire HTML ?
+	else
 		stockData(request_body);
+	if (m_error_code == 0 && m_response_code == 201)// Cas multipart successfull
+	{
+		std::string body = "\r\nRessource has been created successfully\r\n";
+		response.m_response.insert(response.m_response.end(), body.begin(), body.end());
+		response.m_body_size = 43;
+		response.m_content_type = "Content-Type: text/plain\r\n";
+	}
 }
 
 // This function checks if a file has to be uploaded by checking the Content-Disposition header
@@ -472,7 +616,7 @@ bool	Request::checkFileUpload()
 void	Request::stockData(std::vector<unsigned char> const & body)
 {
 	// std::vector<unsigned char>	body(m_read.begin() + m_body_pos, m_read.end());
-	PRINT_RED("Le body extrait de m_read est de taille : ")<<body.size()<<std::endl;
+	// PRINT_RED("Le body extrait de m_read est de taille : ")<<body.size()<<std::endl;
 	FILE* file = fopen("test/DataBaseWebserv.txt", "ab");// en mode binaire append
 	if (!file)
 	{
@@ -483,12 +627,13 @@ void	Request::stockData(std::vector<unsigned char> const & body)
 	size_t written = fwrite(&body[0], 1, body.size(), file);
 	if (written != body.size())
 	{
-		PRINT_RED("Error writting file")<<std::endl;
+		PRINT_RED("Error writting Data Base")<<std::endl;
 		m_error_code = 500;// ???
 	}
 	else
 	{
 		m_response_code = 201;// A checker
+		fputc('\n', file);
 		fputc('\n', file);
 	}
 	fclose(file);
@@ -501,17 +646,17 @@ void	Request::extractFilename(std::string & toExtract)
 	if (toExtract.find("filename=") == std::string::npos)
 		return ;
 	std::string filename = toExtract.substr(toExtract.find("filename=") + 9);
-	std::cout<<"filename = "<<filename;
+	// std::cout<<"filename = "<<filename;
 	if (filename[0] == '"')
 	{
 		filename = filename.substr(1);
-		std::cout<<"filename2 = "<<filename;
+		// std::cout<<"filename2 = "<<filename;
 		if (filename.find('"') == std::string::npos)
 			return ;
 		else
 		{
 			filename = filename.substr(0, filename.find('"'));
-			std::cout<<"filename3 = "<<filename;
+			// std::cout<<"filename3 = "<<filename;
 			if (filename.size() <= 255 && filename.find("..") == std::string::npos
 				&& filename.find("\\") == std::string::npos)
 				m_filename = filename;
@@ -528,7 +673,7 @@ void	Request::uploadFile(std::vector<unsigned char> &boundary_body)
 	std::string location = "test/upload/" + m_filename;
 	if	(checkRessourceAccessibilty(location))
 	{
-		// Update m_error_code comme je le souhaite ??
+		m_error_code = 409;//Confilct exsite deja !
 		return ;
 	}
 	else
@@ -564,19 +709,19 @@ void	Request::processPostMultipart(std::string boundary, std::vector<unsigned ch
 	PRINT_GREEN(boundary.c_str())<<std::endl;
 	std::string	end_boundary = boundary + "--";
 	std::vector<unsigned char>::iterator it = std::search(body.begin(), body.end(), boundary.begin(), boundary.end());
-	while (1)// Tant que le prochain boundary n'est pas le boundary de fin
+	while (it != std::search(body.begin(), body.end(), end_boundary.begin(), end_boundary.end()))// Tant que le prochain boundary n'est pas le boundary de fin
 	{
 		if (it == body.begin())// EFFACE LE BOUNDARY DU DEBUT
 		{
-			PRINT_RED("Debut boundary to cut")<<std::endl;
+			// PRINT_RED("Debut boundary to cut")<<std::endl;
 			body.erase(body.begin(), body.begin() + boundary.size() + 2); // supprime le boundary + "\r\n"
 		}
-		else
-			PRINT_RED("Debut positon is not a boundary")<<std::endl;
+		// else
+		// 	PRINT_RED("Debut positon is not a boundary")<<std::endl;
 		// PRINT_GREEN("Affichage de mon body tout au long de ma boucle")<<std::endl;
 		// for (std::vector<unsigned char>::iterator print = body.begin(); print != body.end(); ++print)// Affichage jusqu'au prochain boundary
 		// 	std::cout<<*print;
-		PRINT_GREEN("Affichage de mon block boundary")<<std::endl;//DECOUPE UN BLOCK
+		// PRINT_GREEN("Affichage de mon block boundary")<<std::endl;//DECOUPE UN BLOCK
 		std::vector<unsigned char>::iterator next = std::search(body.begin(), body.end(), boundary.begin(), boundary.end());
 		// for (std::vector<unsigned char>::iterator test = body.begin(); test != next; ++test)// Affichage jusqu'au prochain boundary
 		// 	std::cout<<*test;
@@ -585,8 +730,13 @@ void	Request::processPostMultipart(std::string boundary, std::vector<unsigned ch
 		processPostBoundaryBlock(boundary_block);
 		// EFFACE LE BLOCK DEJA TRAITE
 		body.erase(body.begin(), next);// On efface le block qui a ete traite
-		if (it == std::search(body.begin(), body.end(), end_boundary.begin(), end_boundary.end()))// a remettre dans le while ??????!!!
-			break ;
+		// if (it == std::search(body.begin(), body.end(), end_boundary.begin(), end_boundary.end()))// a remettre dans le while ??????!!!
+		// 	break ;
+	}
+	if (m_error_code != 0 && m_response_code != 0)// Cas multiple Voir le comportement adequat 207 ??
+	{
+		m_response_code = 0;
+		m_error_code = 400;
 	}
 	// Multipart impossible avec CGI ?
 }
@@ -600,7 +750,7 @@ void	Request::processPostMultipart(std::string boundary, std::vector<unsigned ch
 void	Request::processPostBoundaryBlock(std::vector<unsigned char> &boundary_block)
 {
 	// PRINT
-	PRINT_GREEN("Traitement du block boundary")<<std::endl;
+	// PRINT_GREEN("Traitement du block boundary")<<std::endl;
 	// for (std::vector<unsigned char>::iterator it = boundary_block.begin(); it != boundary_block.end(); ++it)
 	// 	std::cout<<*it;
 	// SPLIT HEADERS / BODY
@@ -609,34 +759,33 @@ void	Request::processPostBoundaryBlock(std::vector<unsigned char> &boundary_bloc
 	it = std::search(boundary_block.begin(), boundary_block.end(), endOfHeaders, endOfHeaders + 4);
 	if (it == boundary_block.end())
 	{
-		PRINT_RED("Pas de fin de Headers trouve dans le block boundary")<<std::endl;
+		// PRINT_RED("Pas de fin de Headers trouve dans le block boundary")<<std::endl;
 		m_error_code = 400;
 		return ;
 	}
 	// STRING CONTENANT L'ENSEMBLE DES HEADERS
 	// UPDATE m_headers
 	std::string boundary_headers(boundary_block.begin(), it + 4);
-	std::cout<<"Affichage des boundary headers ::   "<<boundary_headers<<std::endl;
+	// std::cout<<"Affichage des boundary headers ::   "<<boundary_headers<<std::endl;
 	if (it + 4 == boundary_block.end())// S'IL N'Y A PAS DE BODY
 	{
 		m_error_code = 400;
 		return ;
 	}
 	std::vector<unsigned char> boundary_body(it + 4, boundary_block.end());
-	std::cout<<"Affichage du boundary body : "<<std::endl;
-		for (std::vector<unsigned char>::iterator itest = boundary_body.begin(); itest != boundary_body.end(); ++itest)
-		std::cout<<*itest;
-	PRINT_RED("Arrivee ici c'est soit c'est un televersement soit un stockage chacal")<<std::endl;
+	// std::cout<<"Affichage du boundary body : "<<std::endl;
+	// for (std::vector<unsigned char>::iterator itest = boundary_body.begin(); itest != boundary_body.end(); ++itest)
+	// 	std::cout<<*itest;
 	updateHeaders(boundary_headers);
 	if (checkFileUpload())
 	{
-		PRINT_RED("UPLOAD MULTIPART")<<std::endl;
+		// PRINT_RED("UPLOAD MULTIPART")<<std::endl;
 		uploadFile(boundary_body);//Reset multi part a inserer ici je pense
 		resetMultipart();
 	}
 	else
 	{
-		PRINT_RED("STOCK DATA MULTIPART")<<std::endl;
+		// PRINT_RED("STOCK DATA MULTIPART")<<std::endl;
 		stockData(boundary_body);
 	}
 }
@@ -699,7 +848,10 @@ bool	Request::isKeepAlive()
 void	Request::clear()
 {
 	m_read.clear();
-	m_parsed = false;
+	m_chunked_body.clear();
+	m_ready = false;
+	m_chunked = false;
+	m_end_of_chunked = false;
 	m_method.clear();
 	m_uri.clear();
 	m_uriIsADirectory = false;
@@ -709,19 +861,15 @@ void	Request::clear()
 	m_error_code = 0;
 	m_response_code = 0;
 	m_headers.clear();
+	// m_left_to_read = 0;
+	// m_already_stocked = 0;
 }
 
 // A faire :
-//			-Test les headers avec curl
-//			-test method GET : Not Found, Pas de permission, Found different tests
-//			-test methode not supported / HTTP Version not Supported
-
 //			-Merge /
 //			-Implementations des fonctionnalites propre a la config
-//			-processPost()
-//			-Televersation de fichier [Avec Post (Peut etre utilise un CGI ?) ? A CHECKER !!!?]
-//			-Requetes fragmentees
 //			-CGI
 
-//			-Gerer les code de reponse pour multipart !
-//			-Faire de multiple tests : Upload seul, stock seul , multipart
+//			-Penser a l'affichage final
+//			-Mettre une limite de fichier upload adequate ?
+//			-Gerer les code de reponse pour multipart ! (On verra lors du testeur) + bloc vide multipart (400 ? pour etre coherent avec le reste)

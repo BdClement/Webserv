@@ -1,0 +1,66 @@
+TEST DE CHUNKED REQUEST
+
+	Test valide :
+		Stockage de donnee simple
+			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+
+		Upload de fichier
+			curl -X POST http://localhost:8080/upload --header "Transfer-Encoding: chunked" --header "Content-Disposition: attachment; filename=\"SimplePageBis.html\"" --data-binary "@test/SimplePage.html"
+			curl -X POST http://localhost:8080/upload --header "Transfer-Encoding: chunked" --header "Content-Disposition: attachment; filename=\"test.png\"" --data-binary "@test/error/Image.png"
+
+		Upload de fichier avec Multipart + Chunked Request
+			curl -X POST http://localhost:8080/upload -H "Transfer-Encoding: chunked" -F "file=@test/SimplePage.html"
+
+	Test invalide :
+		Size invalide
+			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nH\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+		Size Negative
+			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n-C\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+		Overflow INT 85F5E0FF 80000000 = 2147483648 (INT_MAX + 1)
+			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n80000000\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+		Pas d'hexadecimal
+			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+		Elements presents apres le chunk de fin
+			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne\r\n0\r\n\r\nCen'estpasFini" | nc localhost 8080
+		Taille incorrecte inferieure
+			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nB\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+		Taille incorrecte superieure
+			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nD\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+		Mauvais Format pas de CRLF a la fin du content
+			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne0\r\n\r\n" | nc localhost 8080
+		Mauvais format chunk 0 sans CRLF
+			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne\r\n0" | nc localhost 8080
+
+
+TEST STCOKAGE DE DONNEE SIMPLE
+
+	Test valide :
+		curl -v -X POST http://localhost:8080/upload -H "Content-Type: appliacation/json" -d '{"key1":"value1", "key2":"value2"}'
+
+	Test invalide :
+		size incorrecte
+			curl -v -X POST http://localhost:8080/upload -H "Content-Length: 100" -H "Content-Type: appliacation/json" -d '{"key1":"value1", "key2":"value2"}'
+		Pas de contenu
+			curl -v -X POST http://localhost:8080/upload -H "Content-Length: 100" -H "Content-Type: appliacation/json"
+
+UPLOAD DE FICHIER SIMPLE
+	Test valide :
+		curl -v -X POST http://localhost:8080/upload -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @test/error/Image.png
+		curl -v -X POST http://localhost:8080/upload -H "Content-Type: application/octet-stream" -H "Content-Length: 612724" -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @test/error/Image.png
+
+	Test invalide :
+		Taille superieure
+		curl -v -X POST http://localhost:8080/upload -H "Content-Length: 612725" -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @test/error/Image.png
+		Taille inferieure
+		curl -v -X POST http://localhost:8080/upload -H "Content-Length: 612723" -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @test/error/Image.png
+		Contenu manquant
+		curl -v -X POST http://localhost:8080/upload -H "Content-Length: 612725" -H "Content-Disposition: filename=\"test.jpeg\""
+
+
+TEST MULTIPART/FORM-DATA
+	Test valide avec le fichier html	
+		curl -v -X POST http://localhost:8080/upload  -F "file1=@test/error/Small.png" -F "file2=@test/error/Moyenne.jpeg" -F "field3=Donnee a stocker"
+
+	Test invalide:
+		Upload trop large
+			curl -v -X POST http://localhost:8080/upload -F "file1=@test/LargeFile.txt;type=application/invalid-mime"

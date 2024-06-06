@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 11:52:42 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/30 15:59:50 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/06 12:04:15 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -47,12 +47,13 @@
 #define MAX_EVENTS		20
 #define URI_SIZE_MAX	2048
 // #define BUFFER_SIZE		1
-#define BUFFER_SIZE 	1024
+#define BUFFER_SIZE 	1024 //Minimum 6 checkChunked
 //Mettre en place de taille pour chaque element ??
 //#define REQUESTLINE_MAX_SIZE 8192 // 8Ko =? 414 Request-URI Too Long
 #define HEADERLINE_MAX_SIZE 8192 // 8Ko => 431 Request Fields Too Large
 #define HEADERTOTAL_MAX_SIZE 16384 //16Ko => 431 Request Fields Too Large
 //#define REQUEST_MAX_SIZE 65536 //64Ko => 413 Payload Too Large
+#define MEGAOCTET	1048576
 
 #define TIMEOUT 30
 

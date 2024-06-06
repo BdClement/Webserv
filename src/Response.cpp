@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/17 16:05:07 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/29 19:18:06 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/03 16:42:47 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -46,6 +46,7 @@ void	Response::set_error_file()
 	m_error_file[403] = "test/error/403Forbidden.html";
 	m_error_file[404] = "test/error/404NotFound.html";
 	m_error_file[405] = "test/error/405MethodNotAllowed.html";
+	m_error_file[409] = "test/error/409Conflict.html";
 	m_error_file[411] = "test/error/411LengthRequired.html";
 	m_error_file[413] = "test/error/413PayloadTooLarge.html";
 	m_error_file[414] = "test/error/414UriTooLarge.html";
@@ -69,6 +70,7 @@ void	Response::set_code_meaning()
 	m_code_meaning[401] = "Unauthorized";// Authentification nécessaire et non fournie ??
 	m_code_meaning[403] = "Forbidden";//Serveur a compris la requête mais refuse de l'autoriser
 	m_code_meaning[404] = "Not Found";//La ressource demandée n'a pas été trouvée
+	m_code_meaning[409] = "Conflict";
 	m_code_meaning[411] = "Length Required";
 	m_code_meaning[413] = "Payload Too Large";
 	m_code_meaning[414] = "Uri Too Large";
@@ -127,8 +129,6 @@ void	Response::generateStatusLine(Request & request)
 void	Response::generateHeaders(Request & request)
 {
 	(void)request;
-	// m_response.push_back('\r');
-	// m_response.push_back('\n');
 	std::string crlf = "\r\n";
 	m_response.insert(m_response.begin(), crlf.begin(), crlf.end());
 	if (m_body_size != 0) // IF BODY
@@ -217,7 +217,7 @@ void	Response::generateErrorBody(Request & request)
 		}
 		//Remplissage de la reponse avec le fichier d'erreur
 		m_response = std::vector<unsigned char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-		m_body_size = m_response.size();
+		m_body_size = m_response.size() + 2;
 		m_response.push_back('\r');
 		m_response.push_back('\n');
 		m_content_type = "Content-Type: text/html\r\n";

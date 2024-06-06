@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:23:59 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/31 20:03:05 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/05 19:32:57 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -58,6 +58,10 @@ class Request
 	std::string		extractBoundary(std::string & contentTypeValue);
 	void			updateHeaders(std::string &boundary_headers);
 	void			resetMultipart();
+	// Chunked
+	void			handleChunked();
+	int				hexaToInt(std::string const & toConvert);
+	void			lastChunk(std::vector<unsigned char>::iterator & bodyStart, int pos, int size);
 
 	// MAINTENANCE
 	bool			isKeepAlive();
@@ -66,7 +70,10 @@ class Request
 
 	private:
 	std::vector<unsigned char>	m_read;
-	bool						m_parsed;
+	std::vector<unsigned char>	m_chunked_body;
+	bool						m_ready;
+	bool						m_chunked;
+	bool						m_end_of_chunked;
 	std::string					m_method;
 	std::string					m_uri;
 	bool						m_uriIsADirectory;
@@ -77,6 +84,8 @@ class Request
 	int							m_response_code;
 	mapString					m_headers;
 	std::string					m_filename;
+	// int							m_left_to_read;
+	// int							m_already_stocked;
 
 	friend class Handler;
 	friend class Connection;

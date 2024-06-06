@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 12:55:53 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/31 19:36:05 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/06 18:01:17 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -261,15 +261,6 @@ bool	Handler::initListenConnection(std::vector<Config>::iterator & it, Connectio
 // This function is the main monitoring loop to detect event and handle them
 void	Handler::launchServer()
 {
-	// TEST SIGNAUX AVEC FORK (Pour CGI)
-	// pid_t	pid = fork();
-	// if (pid == -1)
-	// 	PRINT_RED("Fork failed")<<std::endl;
-	// if (pid == 0)
-	// {
-	// 	// isMainProcess = false;
-	// 	sleep(100);
-	// }
 	std::cout<<"\n*****************       SERVER LAUNCH      *****************\n"<<std::endl;
 	while (1)
 	{
@@ -278,12 +269,8 @@ void	Handler::launchServer()
 		if (num_event == -1)
 		{
 			PRINT_RED("Waiting event failed : ")<<strerror(errno)<<std::endl;
-			break;
+			break; // A retirer ??
 		}
-		// else if (num_event == 0)
-		// {
-		// 	std::cout<<"No events received"<<std::endl;
-		// }
 		else
 		{
 			for (int i = 0; i < num_event; ++i)
@@ -351,17 +338,15 @@ void	Handler::acceptIncomingConnection(int const socket)
 		// 	PRINT_GREEN("SOCKET DEVENUE NON BLOQUANTE")<<std::endl;
 		new_connection.event.events = EPOLLIN | EPOLLERR | EPOLLHUP;
 		new_connection.event.data.fd = new_connection.socket;
-		std::cout<<"  Adding new socket to epoll : ";
+		// std::cout<<"  Adding new socket to epoll : ";
 		if (epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, new_connection.socket, &(new_connection.event)) == -1)
 			PRINT_RED("Failed ")<<": "<<strerror(errno)<<" ]"<<std::endl;
-		else
+		// else
 			// PRINT_GREEN("Success")<<" ]"<<std::endl;
 		m_http_connection.push_back(new_connection);
 	}
 }
 
-// Attention a la gestion des requetes fragmentees
-// Clean conneciton en cas d'erreur de lecture de la requete
 // This function reads request and treat it with it Connection object
 // It creates an http Response and make EPOLLOUT event on the socket as the response is ready
 void	Handler::handlingEpollinEvent(Connection & connection)
@@ -373,6 +358,14 @@ void	Handler::handlingEpollinEvent(Connection & connection)
 	unsigned char	buffer[BUFFER_SIZE];
 	memset(buffer, '\0', sizeof(buffer));
 	int bytes_read = recv(connection.socket, buffer, sizeof(buffer), 0);
+	if (std::distance(connection.request.m_read.begin() + connection.request.m_body_pos, connection.request.m_read.end()) + bytes_read > MEGAOCTET // Protection taille de requete (surtout pour les uploads)
+		|| std::distance(connection.request.m_chunked_body.begin(), connection.request.m_chunked_body.end()) + bytes_read > MEGAOCTET)
+	{
+		// Cette limite de taille a upload ne marche pas avec Chunked request a cause du
+		connection.request.m_error_code = 413;
+		connection.request.m_ready = true;
+	}
+	// std::cout<<"Ce qui vient d'etre lu [ "<<buffer<<" ]"<<std::endl;
 	// S'assurer que le dernier element de buffer est bien \0
 	// if (bytes_read == EWOULDBLOCK || bytes_read == EAGAIN)
 	// {
@@ -384,24 +377,34 @@ void	Handler::handlingEpollinEvent(Connection & connection)
 		if (bytes_read == 0)
 			std::cout<<"  Client closed connection]"<<std::endl;
 		else
-			std::cout<<"  Error : "<<strerror(errno)<<" [Attention WARNING : pas le droit d'utiliser errno ici == A MODIFIER]"<<std::endl;// A MODIFIER
+			std::cout<<"  Error : "<<strerror(errno)<<" [Attention WARNING : pas le droit d'utiliser errno ici == A MODIFIER]"<<std::endl;// A MODIFIER !!!
 		closeAndRmConnection(connection);// A checker peut etre en focntion de l'erreur de recv ???
 	}
 	else
 	{
-		// Ajouter une lecture pour determiner si il reste de la donnee a lire
 		//PARSE REQUEST
-		connection.request.m_read.insert(connection.request.m_read.end(), buffer, buffer + bytes_read);
-		// std::cout<<"\nMessage received :\n["<<std::endl;
-		// for (std::vector<unsigned char>::iterator it = connection.request.m_read.begin(); it != connection.request.m_read.end(); ++it)// AFFICHAGE DE TEST
-		// 	std::cout<<*it;
+		if (connection.request.m_error_code == 0)
+		{
+			// try
+			// {
+				connection.request.m_read.insert(connection.request.m_read.end(), buffer, buffer + bytes_read);
+				// std::cout<<"\nMessage received :\n["<<std::endl;
+				// for (std::vector<unsigned char>::iterator it = connection.request.m_read.begin(); it != connection.request.m_read.end(); ++it)// AFFICHAGE DE TEST
+				// 	std::cout<<*it;
+				connection.request.parseRequest();
+			// }catch (const std::bad_alloc& e)
+			// {
+			// 	PRINT_RED("Memory allocation failed: ")<<e.what()<<std::endl;
+			// 	connection.request.m_error_code = 413;
+			// 	connection.request.m_ready = true;
+			// }
+		}
 		// std::cout<<"]"<<std::endl;
-		connection.request.parseRequest();
 		//m_requestIsComplete cas :
 		//	-GET ,POST ou DELETE avec les Headers on lira et stockera les Body qui seront uniquement traiter pour POST
 		//	-En cas de requetes fragmentees on attend le fragement vide pour les 3 methodes + gestion de reconstituion
 		// END OF PARSING
-		if (connection.request.m_parsed)
+		if (connection.request.m_ready)
 			addEpollout(connection);
 		// Penser peut etre a une generation de reponse ici pour GET et DELETE plutot que dans handleEpollout ?
 	}
@@ -442,10 +445,13 @@ void	Handler::rmEpollout(Connection & connection)
 void	Handler::handlingEpolloutEvent(Connection & connection)
 {
 	// std::cout<<"  Event EPOLLOUT detected on socket "<<connection.socket<<std::endl;
-	// PARSE BODY ONLY FOR POST
-	connection.request.checkBody();
+
+	// PARSE BODY ONLY FOR POST (except chunked request)
+	if (connection.request.m_error_code == 0)
+		connection.request.checkBody();
 	// std::cout<<"[ Logique de traitement de requete ]"<<std::endl;
-	connection.request.processRequest(m_config, connection.response);
+	if (connection.request.m_error_code == 0)
+		connection.request.processRequest(m_config, connection.response);
 	// std::cout<<"[ Logique de generation de reponse HTTP ]"<<std::endl;
 	connection.response.generateResponse(connection.request);
 	// SENDING RESPONSE
