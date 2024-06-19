@@ -45,11 +45,23 @@ class Handler
 	// LAUNCHING SERVER
 	void	launchServer();
 	void	acceptIncomingConnection(int const socket);
+	// Epollin
+	void	epollinEvent(struct epoll_event & events, int index);
 	void	handlingEpollinEvent(Connection & connection);
+	void	handlingCgiEpollin(Connection & connection, int &fd);
+	// Epollout
+	void	epolloutEvent(struct epoll_event & events, int index);
+	void	handlingEpolloutEvent(Connection & connection);
+	void	handlingCgiEpollout(Connection & connection, int &fd);
+	// Epollhup
+	void	epollhupEvent(struct epoll_event & events, int index);
+	void	handlingCgiEpollhup(Connection & connection, int &fd);
+	// Epollerr
+	void	handlingEpollerrEvent(Connection & connection);
+	// Event Monitoring
 	void	addEpollout(Connection & connection);
 	void	rmEpollout(Connection & connection);
-	void	handlingEpolloutEvent(Connection & connection);
-	void	handlingEpollerrEvent(Connection & connection);
+	void	setPipeMonitoring(Connection & connection);
 
 	// CLEANING SERVER
 	void	closeAndRmConnection(Connection & connection);
@@ -62,8 +74,6 @@ class Handler
 	std::vector<Connection>		m_http_connection;// Sockets de communication HTTP
 
 	int							epoll_fd;
-
-	// int	error_code; // ? Pour le retour de notre programme si erreur rencontrer
 };
 
 // Predicat to determine if a socket is a listenning socket
@@ -81,8 +91,6 @@ struct clearFromHanlder{
 	std::vector<Connection> 					* global_listen_connection;
 	std::vector<Connection> 					* global_http_connection;
 	int											* global_epoll_fd;
-	// std::vector<std::vector<unsigned char>* >	*global_request_read;
-	// std::vector<std::vector<unsigned char> >	global_request_read;
 };
 
 // Utils functions

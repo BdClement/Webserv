@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/25 15:38:08 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/29 15:54:44 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/19 17:47:30 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -36,7 +36,7 @@ Connection::Connection(Connection const& asign)
 Connection::~Connection()
 {
 	// extern clearFromHanlder global;
-	// // std::cout<<"Connection destructor called"<<std::endl;
+	// std::cout<<"Connection destructor called"<<std::endl;
 	// std::vector<std::vector<unsigned char>* >::iterator it = std::find(global.global_request_read.begin(), global.global_request_read.end(), &(this->request.m_read));
 	// if (it != global.global_request_read.end())
 	// 	global.global_request_read.erase(it);
@@ -44,6 +44,7 @@ Connection::~Connection()
 
 Connection& Connection::operator=(Connection const & equal)
 {
+	// std::cout<<"Connection operator called"<<std::endl;
 	if (this != &equal)
 	{
 		this->socket = equal.socket;
@@ -60,3 +61,20 @@ int	Connection::getSocket() const
 {
 	return this->socket;
 }
+
+// This function handle killing child process and close pipe in CGI case
+void	Connection::closeRequestCGIPipe()
+{
+	if (this->request.m_cgi)
+	{
+		if (this->request.m_pipe.m_pid != 0)
+		{
+			PRINT_RED("Kill du child process")<<std::endl;
+			kill(this->request.m_pipe.m_pid, SIGINT);
+			// int status;
+			// waitpid(this->request.m_pipe.m_pid, &status, 0);
+		}
+		this->request.m_pipe.clear();
+	}
+}
+

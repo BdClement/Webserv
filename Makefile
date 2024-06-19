@@ -21,6 +21,7 @@ SRCS =			$(SRC_DIR)/main.cpp\
 				$(SRC_DIR)/Connection.cpp\
 				$(SRC_DIR)/Request.cpp\
 				$(SRC_DIR)/Response.cpp\
+				$(SRC_DIR)/PipeHandler.cpp\
 
 ## OBJECTS
 

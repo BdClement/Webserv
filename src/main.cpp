@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 13:17:47 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/16 13:03:51 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/14 17:59:43 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -25,6 +25,7 @@ int	main(int argc, char **argv)
 		Handler	handler;
 		signal(SIGINT, signalHandler);
 		signal(SIGQUIT, signalHandler);
+		// signal(SIGPIPE, SIG_IGN);
 		handler.initTestConfig();//PARSING
 
 		handler.initServer();

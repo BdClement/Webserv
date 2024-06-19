@@ -6,14 +6,14 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 12:55:53 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/06 18:01:17 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/19 17:41:31 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Handler.hpp"
 #include "Config.hpp"
 
-struct clearFromHanlder global = {NULL, NULL, NULL, 0,};
+struct clearFromHanlder global = {NULL, NULL, NULL, 0};
 
 /***********************************************************************************************************
  *                                                                                                         *
@@ -62,7 +62,8 @@ int		Handler::recoverIndexConnection(int const socket) const
 {
 	for (int i = 0; i < (int)m_http_connection.size(); ++i)
 	{
-		if (m_http_connection[i].socket == socket)
+		if (m_http_connection[i].socket == socket || m_http_connection[i].request.m_pipe.pipe_stdin[1] == socket ||
+			m_http_connection[i].request.m_pipe.pipe_stdout[0] == socket)
 			return i;
 	}
 	return -1;
@@ -282,31 +283,31 @@ void	Handler::launchServer()
 				{
 					// std::cout<<"\n=== Handling event... ===\n"<<std::endl;
 					// On retrouve l'objet Connection associe a la socket qui recoit un evenement
-					int	index = recoverIndexConnection(events[i].data.fd);
+					int	index = recoverIndexConnection(events[i].data.fd); // a changer pour inclure CGI
 					if (index == -1)
 					{
 						PRINT_RED("\tConnection recovery failed")<<std::endl;
+						// exit(EXIT_FAILURE);
 						continue;
 					}
 					// Logique de gestion des evenements // A Modifier else if ? =>PB avec Body inutile
 					if (events[i].events & EPOLLIN)
-						handlingEpollinEvent(m_http_connection[index]);
+						epollinEvent(events[i], index);
 					else if (events[i].events & EPOLLOUT)
-						handlingEpolloutEvent(m_http_connection[index]);
+						epolloutEvent(events[i], index);
 					else if (events[i].events & EPOLLERR)
-						handlingEpollerrEvent(m_http_connection[index]);
-					else if (events[i].events & EPOLLHUP)
 					{
-						PRINT_RED("Connection closed by client on socket ")<<m_http_connection[index].socket<<std::endl;
-						closeAndRmConnection(m_http_connection[index]);
+						PRINT_RED("EPOLLERR detectee sur le fd ou la socket : ")<<events[i].data.fd<<std::endl;
+						handlingEpollerrEvent(m_http_connection[index]);
 					}
+					else if (events[i].events & EPOLLHUP)
+						epollhupEvent(events[i], index);
 				}
 			}
+			handlingKeepAlive();
+			if (num_event > MAX_EVENTS)
+				std::cout<<"Warning : more events than MAX_EVENTS have been detected. It could affect server's performance"<<std::endl;
 		}
-		handlingKeepAlive();
-		// Fonction qui check mes http_connections et supprime les keep_alive qui ont dure trop de temps
-		if (num_event > MAX_EVENTS)
-			std::cout<<"Warning : more events than MAX_EVENTS have been detected. It could affect server's performance"<<std::endl;
 	}
 }
 
@@ -314,6 +315,14 @@ void	Handler::launchServer()
 // and add the socket to epoll
 void	Handler::acceptIncomingConnection(int const socket)
 {
+	// int count = 0;
+	// for (std::vector<Connection>::iterator it = m_http_connection.begin(); it != m_http_connection.end();++it)
+	// {
+	// 	if (it->request.m_cgi)
+	// 		count++;
+	// }
+	// PRINT_RED("Nombre de requete CGI avant accept : ")<<count<<std::endl;
+	// PRINT_RED("Size de http_request avant accept : ")<<m_http_connection.size()<<std::endl;
 	// std::cout<<"\n=== Accept connection from listenning socket... ===\n"<<std::endl;
 	// std::cout<<"[ Event detected on listenning socket "<<socket<<"\n";
 	Connection new_connection;
@@ -327,7 +336,32 @@ void	Handler::acceptIncomingConnection(int const socket)
 	}
 	else
 	{
-		// PRINT_GREEN("Success")<<" : socket "<<new_connection.socket<<"\n";
+		// int count2 = 0;
+		// for (std::vector<Connection>::iterator it = m_http_connection.begin(); it != m_http_connection.end();++it)
+		// {
+		// 	std::cout<<"pipe_stdout[0] = "<<it->request.m_pipe.pipe_stdout[0]<<" sur socket "<<it->socket<<std::endl;
+		// 	std::cout<<"pipe_stdout[1] = "<<it->request.m_pipe.pipe_stdout[1]<<" sur socket "<<it->socket<<std::endl;
+		// 	std::cout<<"pipe_stdin[0] = "<<it->request.m_pipe.pipe_stdin[0]<<" sur socket "<<it->socket<<std::endl;
+		// 	std::cout<<"pipe_stdin[1] = "<<it->request.m_pipe.pipe_stdin[1]<<" sur socket "<<it->socket<<std::endl;
+		// 	if (it->request.m_cgi)
+		// 		count2++;
+		// }
+		// if (m_http_connection.size() > 0)
+		// {
+		// 	int flags = fcntl(m_http_connection[0].request.m_pipe.pipe_stdout[0], F_GETFL);
+		// 	if (flags == -1 && errno == EBADF)
+		// 		PRINT_RED("Fd closed : ")<<m_http_connection[0].request.m_pipe.pipe_stdout[0]<<" de la socket "<<m_http_connection[0].socket<<std::endl;
+		// 	else
+		// 		PRINT_GREEN("Fd open : ")<<m_http_connection[0].request.m_pipe.pipe_stdout[0]<<" de la socket "<<m_http_connection[0].socket<<std::endl;
+		// 	flags = fcntl(m_http_connection[0].request.m_pipe.pipe_stdin[1], F_GETFL);
+		// 	if (flags == -1 && errno == EBADF)
+		// 		PRINT_RED("Fd closed : ")<<m_http_connection[0].request.m_pipe.pipe_stdin[1]<<" de la socket "<<m_http_connection[0].socket<<std::endl;
+		// 	else
+		// 		PRINT_GREEN("Fd open : ")<<m_http_connection[0].request.m_pipe.pipe_stdin[1]<<" de la socket "<<m_http_connection[0].socket<<std::endl;
+		// }
+		// PRINT_RED("Nombre de requete CGI apres accept : ")<<count2<<std::endl;
+		// PRINT_RED("Size de http_request apres accept : ")<<m_http_connection.size()<<std::endl;
+		PRINT_GREEN("Success")<<" : socket "<<new_connection.socket<<"\n";
 		// if (fcntl(new_connection.socket, F_SETFL, O_NONBLOCK) < 0)
 		// {
 		// 	PRINT_RED("Error O_NONBLOCK failed on socket")<<" : Connection established closed"<<std::endl;
@@ -343,14 +377,63 @@ void	Handler::acceptIncomingConnection(int const socket)
 			PRINT_RED("Failed ")<<": "<<strerror(errno)<<" ]"<<std::endl;
 		// else
 			// PRINT_GREEN("Success")<<" ]"<<std::endl;
+		// m_http_connection.insert(m_http_connection.end(), new_connection);
 		m_http_connection.push_back(new_connection);
+		// int count4 = 0;
+		// for (std::vector<Connection>::iterator it = m_http_connection.begin(); it != m_http_connection.end();++it)
+		// {
+		// 	std::cout<<"pipe_stdout[0] = "<<it->request.m_pipe.pipe_stdout[0]<<" sur socket "<<it->socket<<std::endl;
+		// 	std::cout<<"pipe_stdout[1] = "<<it->request.m_pipe.pipe_stdout[1]<<" sur socket "<<it->socket<<std::endl;
+		// 	std::cout<<"pipe_stdin[0] = "<<it->request.m_pipe.pipe_stdin[0]<<" sur socket "<<it->socket<<std::endl;
+		// 	std::cout<<"pipe_stdin[1] = "<<it->request.m_pipe.pipe_stdin[1]<<" sur socket "<<it->socket<<std::endl;
+		// 	if (it->request.m_cgi)
+		// 		count4++;
+		// }
+		// if (m_http_connection.size() > 0)
+		// {
+		// 	int flags1 = fcntl(m_http_connection[0].request.m_pipe.pipe_stdout[0], F_GETFL);
+		// 	if (flags1 == -1 && errno == EBADF)
+		// 		PRINT_RED("Fd closed : ")<<m_http_connection[0].request.m_pipe.pipe_stdout[0]<<" de la socket "<<m_http_connection[0].socket<<std::endl;
+		// 	else
+		// 		PRINT_GREEN("Fd open : ")<<m_http_connection[0].request.m_pipe.pipe_stdout[0]<<" de la socket "<<m_http_connection[0].socket<<std::endl;
+		// 	flags1 = fcntl(m_http_connection[0].request.m_pipe.pipe_stdin[1], F_GETFL);
+		// 	if (flags1 == -1 && errno == EBADF)
+		// 		PRINT_RED("Fd closed : ")<<m_http_connection[0].request.m_pipe.pipe_stdin[1]<<" de la socket "<<m_http_connection[0].socket<<std::endl;
+		// 	else
+		// 		PRINT_GREEN("Fd open : ")<<m_http_connection[0].request.m_pipe.pipe_stdin[1]<<" de la socket "<<m_http_connection[0].socket<<std::endl;
+		// }
+		// PRINT_RED("Nombre de requete CGI apres pushback : ")<<count4<<std::endl;
+		// PRINT_RED("Size de http_request apres pushback : ")<<m_http_connection.size()<<std::endl;
 	}
+	// int count3 = 0;
+	// for (std::vector<Connection>::iterator it = m_http_connection.begin(); it != m_http_connection.end();++it)
+	// {
+	// 	if (it->request.m_cgi)
+	// 		count3++;
+	// }
+	// PRINT_RED("Nombre de requete CGI apres fonction accept : ")<<count3<<std::endl;
+	// PRINT_RED("Size de http_request apres fonction accept : ")<<m_http_connection.size()<<std::endl;
+}
+
+/***********************************************EPOLLIN********************************************************/
+
+void	Handler::epollinEvent(struct epoll_event & events, int index)
+{
+	// struct stat file_stat;
+	// if (fstat(events.data.fd))
+	// PRINT_RED("TEST : socket ")<<m_http_connection[index].socket<<" et eventFD "<<events.data.fd<<std::endl;
+	if (events.data.fd != m_http_connection[index].socket)
+		handlingCgiEpollin(m_http_connection[index], events.data.fd);
+	else
+		handlingEpollinEvent(m_http_connection[index]);
 }
 
 // This function reads request and treat it with it Connection object
 // It creates an http Response and make EPOLLOUT event on the socket as the response is ready
 void	Handler::handlingEpollinEvent(Connection & connection)
 {
+	PRINT_GREEN("handlingEpollinEvent called")<<std::endl;
+	// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
 	// SET TIME KEEP-ALIVE
 	connection.last_active_time = time(NULL);
 	// READ
@@ -405,13 +488,233 @@ void	Handler::handlingEpollinEvent(Connection & connection)
 		//	-En cas de requetes fragmentees on attend le fragement vide pour les 3 methodes + gestion de reconstituion
 		// END OF PARSING
 		if (connection.request.m_ready)
+		{
 			addEpollout(connection);
+			// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
+		}
 		// Penser peut etre a une generation de reponse ici pour GET et DELETE plutot que dans handleEpollout ?
 	}
 }
 
+void	Handler::handlingCgiEpollin(Connection & connection, int &fd)
+{
+	PRINT_GREEN("handlingCgiEpollin called on fd :")<<fd<<std::endl;
+	// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
+	////////////////////////////////////////////////////////////////
+	char buffer[60000];
+	ssize_t bytes_read = read(fd, buffer, 60000);
+	if (bytes_read == -1)
+	{
+		PRINT_RED("Error reading pipe CGI : ")<<fd<<std::endl;
+		close(fd);
+		connection.request.m_pipe.pipe_stdout[0] = 0;
+		// fd = 0;
+		kill(connection.request.m_pipe.m_pid, SIGINT);// waitpid ?
+		// kill fantome ?
+		connection.request.m_error_code = 500;
+		addEpollout(connection);
+		return ;
+	}
+	if (bytes_read == 0)
+	{
+		PRINT_GREEN("EOF a ete atteint : toute la reponse a ete recuperer")<<std::endl;
+		// Check Content-Length par exmple
+		connection.request.m_response_code = 200;
+		close(fd);
+		connection.request.m_pipe.pipe_stdout[0] = 0;
+		// fd = 0;
+		addEpollout(connection);
+		return ;
+	}
+	connection.response.m_response.insert(connection.response.m_response.end(), buffer, buffer + bytes_read);
+	// std::cout<<"TEST size de la reponse : "<<connection.response.m_response.size()<<std::endl;
+	// std::cout<<"\nResponse received :\n["<<std::endl;
+	// for (std::vector<unsigned char>::iterator it = connection.response.m_response.begin(); it != connection.response.m_response.end(); ++it)// AFFICHAGE DE TEST
+	// 		std::cout<<*it;
+	// std::cout<<std::endl;
+	// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
+}
+
+/***********************************************EPOLLOUT*******************************************************/
+
+void	Handler::epolloutEvent(struct epoll_event & events, int index)
+{
+	if (events.data.fd != m_http_connection[index].socket)
+		handlingCgiEpollout(m_http_connection[index], events.data.fd);
+	else
+		handlingEpolloutEvent(m_http_connection[index]);
+}
+
+// Attention a la gestion des requetes fragmentees
+// Clean connection en cas d'erreur d'envoi de la requete
+// This Function sends the response on the socket and remove EPOLLOUT event on this socket as the reponse has been sent
+void	Handler::handlingEpolloutEvent(Connection & connection)
+{
+	PRINT_GREEN("handlingEpolloutEvent called")<<std::endl;
+	// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
+	// std::cout<<"\nRequest received :\n["<<std::endl;
+	// for (std::vector<unsigned char>::iterator it = connection.request.m_read.begin(); it != connection.request.m_read.end(); ++it)// AFFICHAGE DE TEST
+	// 		std::cout<<*it;
+	// std::cout<<std::endl;
+	// std::cout<<"  Event EPOLLOUT detected on socket "<<connection.socket<<std::endl;
+	if (!connection.request.m_cgi)
+	{
+		if (connection.request.m_error_code == 0)
+			connection.request.checkBody();
+		// std::cout<<"[ Logique de traitement de requete ]"<<std::endl;
+		if (connection.request.m_error_code == 0)
+			connection.request.processRequest(m_config, connection.response);
+		if (connection.request.m_error_code == 0 && connection.request.m_cgi)
+		{
+			setPipeMonitoring(connection);
+			rmEpollout(connection);
+			// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
+			return ;
+		}
+	}
+	// std::cout<<"[ Logique de generation de reponse HTTP ]"<<std::endl;
+	if (connection.request.m_cgi && connection.request.m_error_code == 0)
+		connection.response.generateStatusLine(connection.request);
+	else
+		connection.response.generateResponse(connection.request);
+	// SENDING RESPONSE
+	const unsigned char* rep = &(connection.response.m_response[0]);
+	PRINT_GREEN("Contenu de ce qui a ete envoye = ")<<std::endl;
+	for (std::vector<unsigned char>::iterator it = connection.response.m_response.begin(); it != connection.response.m_response.end(); ++it)
+		std::cout<<*it;
+	std::cout<<std::endl;
+	if (send(connection.socket, rep, connection.response.m_response.size(), 0) == -1)
+		PRINT_RED("  ERROR couldnt send response")<<std::endl;
+	else
+		PRINT_GREEN(" Response sent")<<std::endl;
+	rmEpollout(connection);
+	// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
+	// Si !keep alive dans la requete  => close connection
+	if (!connection.request.isKeepAlive())
+		closeAndRmConnection(connection);
+	else // A conditionner avec requetes fragmentees
+	{
+		connection.request.clear();
+		connection.response.clear();
+	}
+}
+
+// Forcement requete POST
+void	Handler::handlingCgiEpollout(Connection & connection, int &fd)
+{
+	PRINT_GREEN("handlingCgiEpollout called on fd :")<<fd<<std::endl;
+	// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
+	////// Determiner le nb de carcateres a lire /////////////
+	int to_read;
+	if (connection.request.m_body_pos + connection.request.m_pipe.m_bytes_sent + 60000 > connection.request.m_read.size())
+		to_read = connection.request.m_read.size() - (connection.request.m_body_pos + connection.request.m_pipe.m_bytes_sent);
+	else
+		to_read = 60000;
+	//////////////////////////////////////////////////////////
+	// PRINT_GREEN("Envoi du body au script CGI")<<std::endl;
+	// std::cout<<"TEST : "<<&(connection.request.m_read[0])<<std::endl;//connection.request.m_body_pos + connection.request.m_pipe.m_bytes_sent
+	// std::cout<<"TEST : body_pos = "<<connection.request.m_body_pos<<" Size de m_read = "<<connection.request.m_read.size()<<" bytes_sent = "<<connection.request.m_pipe.m_bytes_sent<<std::endl;
+	ssize_t bytes_written = write(fd, &(connection.request.m_read[connection.request.m_body_pos + connection.request.m_pipe.m_bytes_sent]), to_read);
+	connection.request.m_pipe.m_bytes_sent += bytes_written;
+	if (bytes_written == -1)
+	{
+		PRINT_RED("Error writing pipe : ")<< fd<<std::endl;
+		kill(connection.request.m_pipe.m_pid, SIGINT);// waitpid ?
+		epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+		close(fd);
+		connection.request.m_pipe.pipe_stdin[1] = 0;
+		// fd = 0;
+		epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection.request.m_pipe.pipe_stdout[0], NULL);
+		close(connection.request.m_pipe.pipe_stdout[0]);
+		connection.request.m_pipe.pipe_stdout[0] = 0;
+		connection.request.m_error_code = 500;
+		addEpollout(connection);
+		return ;
+		// close le child process pour eviter les fantomes
+	}
+	// std::cout<<"TEST : bytes_written = "<<bytes_written<<std::endl;
+	// std::cout<<"TEST : body_pos + bytes_sent = "<<connection.request.m_body_pos + connection.request.m_pipe.m_bytes_sent<<" contre size = "<<connection.request.m_read.size()<<std::endl;
+	if (connection.request.m_body_pos + connection.request.m_pipe.m_bytes_sent == connection.request.m_read.size())
+	{
+		// PRINT_GREEN("L'ensemble du body a ete ecrit sur le pipe")<<std::endl;
+		epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+		close(fd);
+		connection.request.m_pipe.pipe_stdin[1] = 0;
+		// fd = 0;
+	}
+}
+
+/***********************************************EPOLLHUP*******************************************************/
+
+void	Handler::epollhupEvent(struct epoll_event & events, int index)
+{
+	PRINT_RED("EPOLLHUP detecte sur le fd ou socket : ")<<events.data.fd<<std::endl;
+	if (events.data.fd == m_http_connection[index].socket)
+	{
+		PRINT_RED("Connection closed by client on socket ")<<m_http_connection[index].socket<<std::endl;
+		closeAndRmConnection(m_http_connection[index]);
+	}
+	else
+		handlingCgiEpollhup(m_http_connection[index], events.data.fd);
+}
+
+void	Handler::handlingCgiEpollhup(Connection & connection, int &fd)
+{
+	PRINT_GREEN("handlingCgiEpollhup called on fd :")<<fd<<std::endl;
+	// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
+	int status;
+	pid_t result = waitpid(connection.request.m_pipe.m_pid, &status, WNOHANG);
+	if (result == 0)
+		PRINT_GREEN("Le process est toujours en cours d'execution : ")<<connection.request.m_pipe.m_pid<<std::endl;
+	else if (result == -1)
+		PRINT_RED("Error de waitpid")<<std::endl;
+	else
+	{
+		if (WIFEXITED(status))// Si le child a termine son execution
+		{
+			PRINT_GREEN("Le child process s'est termine")<<std::endl;
+			if (WEXITSTATUS(status) == SIGINT) // Si le child a rencontre une erreur
+			{
+				PRINT_GREEN("Le child a quitte grace a SIGINT, une erreur doit etre retorune")<<std::endl;
+				if (connection.request.m_method == "POST" && connection.request.m_pipe.pipe_stdin[1] != 0)
+					epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection.request.m_pipe.pipe_stdin[1], NULL);
+				epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection.request.m_pipe.pipe_stdout[0], NULL);// Premier bout de pipe
+				// epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection.request.m_pipe.pipe_stdin[1], NULL);// Deuxieme bout de pipe
+				connection.request.m_pipe.clear();
+				connection.request.m_error_code = 500;
+				addEpollout(connection);
+				return ;
+			}
+			else// Si le child a execute le script correctement
+			{
+				PRINT_GREEN("EOF a ete atteint : toute la reponse a ete recuperer")<<std::endl;
+				// Check Content-Length par exmple
+				epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection.request.m_pipe.pipe_stdout[0], NULL);// Premier bout de pipe
+				epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection.request.m_pipe.pipe_stdin[1], NULL);// Deuxieme bout de pipe
+				connection.request.m_pipe.clear();
+				connection.request.m_response_code = 200;
+				addEpollout(connection);
+				return ;
+			}
+		}
+	}
+}
+
+/***********************************************EPOLLERR*******************************************************/
+
+// Clean connection en cas d'event EPOLLERR detecte : En fonction de l'erreur ou tout le temps ?
+void	Handler::handlingEpollerrEvent(Connection & connection)
+{
+	std::cout<<"\tEvent EPOLLERR detected on socket "<<connection.socket<<" : "<<strerror(errno)<<std::endl;
+	// Gestion d'erreur
+	closeAndRmConnection(connection);// A checker si c'est necessaire ici : Choix
+}
+
+/*******************************************EVENT MONITORING***************************************************/
+
 void	Handler::addEpollout(Connection & connection)
 {
+	PRINT_GREEN("addEpollout called")<<std::endl;
 	if (!(connection.event.events & EPOLLOUT))
 	{
 		// |= "ou" binaire avec assignation. Permet de combiner les bits deja presents au bit EPOLLOUT que l'on ajoute
@@ -426,6 +729,7 @@ void	Handler::addEpollout(Connection & connection)
 
 void	Handler::rmEpollout(Connection & connection)
 {
+	PRINT_GREEN("rmEpollout called")<<std::endl;
 	// &= ~ "et" binaire avec negation de EPOLLOUT et assignation
 	// Cela permet de supprimer le bit EPOLLOUT en inversant sa valeur
 	connection.event.events &= ~EPOLLOUT;
@@ -439,48 +743,40 @@ void	Handler::rmEpollout(Connection & connection)
 		// PRINT_GREEN("  Removing EPOLLOUT to watched event")<<" socket "<<connection.socket<<"]"<<std::endl;
 }
 
-// Attention a la gestion des requetes fragmentees
-// Clean connection en cas d'erreur d'envoi de la requete
-// This Function sends the response on the socket and remove EPOLLOUT event on this socket as the reponse has been sent
-void	Handler::handlingEpolloutEvent(Connection & connection)
+void	Handler::setPipeMonitoring(Connection & connection)
 {
-	// std::cout<<"  Event EPOLLOUT detected on socket "<<connection.socket<<std::endl;
-
-	// PARSE BODY ONLY FOR POST (except chunked request)
-	if (connection.request.m_error_code == 0)
-		connection.request.checkBody();
-	// std::cout<<"[ Logique de traitement de requete ]"<<std::endl;
-	if (connection.request.m_error_code == 0)
-		connection.request.processRequest(m_config, connection.response);
-	// std::cout<<"[ Logique de generation de reponse HTTP ]"<<std::endl;
-	connection.response.generateResponse(connection.request);
-	// SENDING RESPONSE
-	const unsigned char* rep = &(connection.response.m_response[0]);
-	PRINT_GREEN("Contenu de ce qui a ete envoye = ")<<std::endl;
-	for (std::vector<unsigned char>::iterator it = connection.response.m_response.begin(); it != connection.response.m_response.end(); ++it)
-		std::cout<<*it;
-	std::cout<<std::endl;
-	if (send(connection.socket, rep, connection.response.m_response.size(), 0) == -1)
-		PRINT_RED("  ERROR couldnt send response")<<std::endl;
-	else
-		PRINT_GREEN(" Response sent")<<std::endl;
-	rmEpollout(connection);
-	// Si !keep alive dans la requete  => close connection
-	if (!connection.request.isKeepAlive())
-		closeAndRmConnection(connection);
-	else // A conditionner avec requetes fragmentees
+	// PRINT_GREEN("setPipeMonitoring called")<<std::endl;
+	struct epoll_event stdin;
+	struct epoll_event stdout;
+	stdin.events = EPOLLOUT;
+	stdin.data.fd = connection.request.m_pipe.pipe_stdin[1];
+	stdout.events = EPOLLIN;
+	stdout.data.fd = connection.request.m_pipe.pipe_stdout[0];
+	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, connection.request.m_pipe.pipe_stdout[0], &stdout) == -1)// Ici Probleme !
 	{
-		connection.request.clear();
-		connection.response.clear();
+		PRINT_RED("Ading pipe to epoll failed")<<std::endl;
+		connection.request.m_pipe.pipe_stdin[0] = 0;
+		connection.request.m_pipe.pipe_stdout[1] = 0;
+		connection.request.m_pipe.clear();
+		connection.request.m_error_code = 500;
+		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
+		connection.request.m_cgi = false;
+		return ;
 	}
-}
-
-// Clean connection en cas d'event EPOLLERR detecte : En fonction de l'erreur ou tout le temps ?
-void	Handler::handlingEpollerrEvent(Connection & connection)
-{
-	std::cout<<"\tEvent EPOLLERR detected on socket "<<connection.socket<<" : "<<strerror(errno)<<std::endl;
-	// Gestion d'erreur
-	closeAndRmConnection(connection);// A checker si c'est necessaire ici : Choix
+	if (connection.request.m_method == "POST")
+	{
+		if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, connection.request.m_pipe.pipe_stdin[1], &stdin) == -1)
+		{
+			PRINT_RED("Ading pipe to epoll failed")<<std::endl;
+			connection.request.m_pipe.pipe_stdin[0] = 0;
+			connection.request.m_pipe.pipe_stdout[1] = 0;
+			connection.request.m_pipe.clear();
+			connection.request.m_error_code = 500;
+			// PRINT_RED("Mise a false de m_cgi")<<std::endl;
+			connection.request.m_cgi = false;
+		}
+	}
+	// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
 }
 
 /***********************************************************************************************************
@@ -495,6 +791,7 @@ void	Handler::handlingEpollerrEvent(Connection & connection)
 // This function close socket and remove Connection object in m_http_connection vector
 void	Handler::closeAndRmConnection(Connection & connection)
 {
+	epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection.socket, NULL);
 	if (close(connection.socket) == -1)
 		PRINT_RED("\tClosing connection failed ")<<"on socket "<<connection.socket<<" : "<<strerror(errno)<<std::endl;
 	else
@@ -507,23 +804,48 @@ void	Handler::closeAndRmConnection(Connection & connection)
 // If so, it closes them and remove Connection object
 void	Handler::handlingKeepAlive()
 {
+	// int count = 0;
 	for (std::vector<Connection>::iterator it = m_http_connection.begin(); it != m_http_connection.end();)
 	{
+		// if (it->request.m_cgi)
+		// 	count++;
 		if (difftime(time(NULL), it->last_active_time) > TIMEOUT)
 		{
+			// PRINT_RED("TEST1 : ")<<it->request.m_cgi<<" on socket "<<it->socket<<" m_uri = "<<(it->request).m_uri<<std::endl;
+			if (it->request.m_cgi)
+			{
+				PRINT_RED("Kill du child process")<<std::endl;
+				kill(it->request.m_pipe.m_pid, SIGINT);
+				if (it->request.m_method == "POST" && it->request.m_pipe.pipe_stdin[1] != 0)
+					epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->request.m_pipe.pipe_stdin[1], NULL);
+				epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->request.m_pipe.pipe_stdout[0], NULL);
+				std::string rep = "HTTP/1.1 500 Internal Servor Error";
+				if (send(it->socket, rep.c_str(), rep.size(), 0) == -1)
+					PRINT_RED("  ERROR couldnt send response")<<std::endl;
+				// else
+				// 	PRINT_GREEN(" Response sent")<<std::endl;
+				int status;
+				waitpid(it->request.m_pipe.m_pid, &status, 0);// Pb du Broken pipe
+				// PRINT_RED("TEST pipe stdout[0] = ")<<it->request.m_pipe.pipe_stdout[0]<<std::endl;
+				it->request.m_pipe.clear();
+			}
+			// PRINT_RED("TEST2")<<std::endl;
 			// std::cout<<difftime(time(NULL), it->last_active_time)<<" > "<<TIMEOUT<<std::endl;
 			std::vector<Connection>::iterator next = it;
 			++next;
+			/////////////
+			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->socket, NULL);
 			if (close(it->socket) == -1)
 				PRINT_RED("\tClosing connection failed ")<<"on socket "<<it->socket<<" : "<<strerror(errno)<<std::endl;
 			else
 				PRINT_GREEN("Connection socket closed : ")<<it->socket<<" | Kept alive 30 sec"<<std::endl;
 			it = m_http_connection.erase(it);
-			// PRINT_RED("JE suis sense retirer la connection qui n'a pas ete utilise depuis plus de 30 sec")<<std::endl;
 		}
 		else
 			++it;
 	}
+	// PRINT_RED("Nombre de requete CGI : ")<<count<<std::endl;
+	// sleep(1);
 }
 
 /***********************************************************************************************************
@@ -588,14 +910,19 @@ void	signalHandler(int signal_num)
 		std::cout<<"Signal SIGINT received. Cleaning in progress..."<<std::endl;
 	else if (signal_num == SIGQUIT)
 		std::cout<<"Signal SIGQUIT received. Cleaning in progress..."<<std::endl;
+	// if (global.cgi_strings != NULL)
+	// {
+	// 	global.cgi_strings->clear();
+	// 	// std::vector<std::string>().swap(*global.cgi_strings);
+	// }
 	//VECTOR CONFIG
 	std::vector<Config>().swap(*global.global_config);
 	//VECTOR LISTENNING SOCKET
-	std::cout<<"Cleaning listenning sockets"<<std::endl;
+	std::cout<<"Cleaning listenning sockets ..."<<std::endl;
 	std::for_each(global.global_listen_connection->begin(), global.global_listen_connection->end(), &closeSocket);
 	std::vector<Connection>().swap(*global.global_listen_connection);
 	//VECTOR HTTP SOCKET
-	std::cout<<"Cleaning http communication sockets\n"<<std::endl;
+	std::cout<<"Cleaning http communication sockets ...\n"<<std::endl;
 	std::for_each(global.global_http_connection->begin(), global.global_http_connection->end(), &closeSocket);
 	std::vector<Connection>().swap(*global.global_http_connection);
 	//VECTOR VECTOR READING FROM SOCKET A garder en tete si leak ?
@@ -604,6 +931,7 @@ void	signalHandler(int signal_num)
 		PRINT_RED("Closing epoll_fd failed ")<<strerror(errno)<<std::endl;
 	else
 		std::cout<<"Epoll_fd closed"<<std::endl;
+	std::cout<<"Exit avec "<<signal_num<<" Et SIGINT = "<<SIGINT<<std::endl;
 	exit(signal_num);
 }
 
@@ -614,4 +942,6 @@ void	closeSocket(Connection objet)
 		PRINT_RED("Closing connection failed ")<<"on socket "<<objet.getSocket()<<" : "<<strerror(errno)<<std::endl;
 	else
 		std::cout<<"socket "<<objet.getSocket()<<" closed"<<std::endl;
+	// Rajouter
+	objet.closeRequestCGIPipe();
 }

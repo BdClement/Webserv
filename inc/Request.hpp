@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:23:59 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/05 19:32:57 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/19 13:14:45 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -25,7 +25,37 @@ class Request
 
 	Request & operator=(Request const& equal);
 
-	// PARSING
+	// Classe interne pour la gestion des pipes utiles au CGI
+	class PipeHandler
+	{
+		public :
+			PipeHandler();
+			~PipeHandler();
+			PipeHandler & operator=(PipeHandler const& equal);
+			void	closeAndReset(int &pipe);
+			void	clear(); // Pour passer a une autre requete (notamment les bool)
+
+		private :
+			int		pipe_stdin[2];
+			int		pipe_stdout[2];
+			int		m_bytes_sent;
+			pid_t	m_pid;
+			std::string	request_method;
+			std::string	script_name;
+			std::string	query_string;
+			std::string CType;
+			std::string	CLength;
+			std::string	server;
+			std::string	ressource;
+			std::string	bin;
+
+		friend class Handler;
+		friend class Connection;
+		friend class Request;
+		// friend class Response;
+	};
+
+	// PARSING REQUEST
 	void			parseRequest();
 	//	RequestLine
 	size_t			parseRequestLine();
@@ -38,6 +68,10 @@ class Request
 	bool			checkContentLengthValue(std::string & value, long long &content_length);
 	// Body
 	void			checkBody();
+	// Chunked
+	void			handleChunked();
+	int				hexaToInt(std::string const & toConvert);
+	void			lastChunk(std::vector<unsigned char>::iterator & bodyStart, int pos, int size);
 
 	// PROCESS REQUEST
 	void			processRequest(std::vector<Config> & m_config, Response & response);
@@ -58,10 +92,14 @@ class Request
 	std::string		extractBoundary(std::string & contentTypeValue);
 	void			updateHeaders(std::string &boundary_headers);
 	void			resetMultipart();
-	// Chunked
-	void			handleChunked();
-	int				hexaToInt(std::string const & toConvert);
-	void			lastChunk(std::vector<unsigned char>::iterator & bodyStart, int pos, int size);
+
+	// PROCESS CGI
+	void			processCGI();
+	void			setEnv(char **env);
+	void			setArg(char **arg);
+	bool			setPipe();
+	void			cgiChildProcess(char **env, char **arg);
+	void			cgiParentProcess(pid_t pid);
 
 	// MAINTENANCE
 	bool			isKeepAlive();
@@ -83,12 +121,11 @@ class Request
 	int							m_error_code;
 	int							m_response_code;
 	mapString					m_headers;
+	bool						m_cgi;
 	std::string					m_filename;
-	// int							m_left_to_read;
-	// int							m_already_stocked;
+	PipeHandler					m_pipe;
 
 	friend class Handler;
 	friend class Connection;
 	friend class Response;
 };
-

@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/24 18:45:29 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/29 15:54:54 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/19 13:06:40 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -26,6 +26,7 @@ class Connection
 	Connection & operator=(Connection const& equal);
 
 	int	getSocket() const;
+	void	closeRequestCGIPipe();
 
 	private:
 

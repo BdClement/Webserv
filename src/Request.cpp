@@ -6,13 +6,14 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:29:28 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/06 19:23:22 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/19 17:45:07 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Request.hpp"
+#include "Handler.hpp"
 
-Request::Request() : m_ready(false), m_chunked(false), m_end_of_chunked(false), m_uriIsADirectory(false), m_body_pos(0), m_error_code(0), m_response_code(0), m_headers()//, m_left_to_read(0), m_already_stocked(0)
+Request::Request() : m_ready(false), m_chunked(false), m_end_of_chunked(false), m_uriIsADirectory(false), m_body_pos(0), m_error_code(0), m_response_code(0), m_headers(), m_cgi(false)
 {
 	// std::cout<<"Request constructor called"<<std::endl;
 }
@@ -20,21 +21,59 @@ Request::Request() : m_ready(false), m_chunked(false), m_end_of_chunked(false), 
 Request::Request(Request const& asign)
 {
 	m_read = asign.m_read;
+	m_chunked_body = asign.m_chunked_body;
 	m_ready = asign.m_ready;
+	m_chunked = asign.m_chunked;
+	m_end_of_chunked = asign.m_end_of_chunked;
+	m_method = asign.m_method;
+	m_uri = asign.m_uri;
+	m_uriIsADirectory = asign.m_uriIsADirectory;
+	m_query = asign.m_query;
+	m_protocol = asign.m_protocol;
+	m_body_pos = asign.m_body_pos;
+	m_error_code = asign.m_error_code;
+	m_response_code = asign.m_response_code;
+	m_headers = asign.m_headers;
+	m_cgi = asign.m_cgi;
+	m_filename = asign.m_filename;
+	m_pipe = asign.m_pipe;
 	// std::cout<<"Request copy constructor called"<<std::endl;
 }
 
 Request::~Request()
 {
 	// std::cout<<"Request destructor called"<<std::endl;
+	// m_pipe.clear();
 }
 
 Request& Request::operator=(Request const & equal)
 {
+	// std::cout<<"Request copy operator called"<<std::endl;
 	if (this != &equal)
 	{
 		m_read = equal.m_read;
+		m_chunked_body = equal.m_chunked_body;
 		m_ready = equal.m_ready;
+		m_chunked = equal.m_chunked;
+		m_end_of_chunked = equal.m_end_of_chunked;
+		m_method = equal.m_method;
+		m_uri = equal.m_uri;
+		m_uriIsADirectory = equal.m_uriIsADirectory;
+		m_query = equal.m_query;
+		m_protocol = equal.m_protocol;
+		m_body_pos = equal.m_body_pos;
+		m_error_code = equal.m_error_code;
+		m_response_code = equal.m_response_code;
+		m_headers = equal.m_headers;
+		m_cgi = equal.m_cgi;
+		m_filename = equal.m_filename;
+		m_pipe = equal.m_pipe;
+		// PB ICI impossible de transmettre pipe donc soit erreur soit broken pipe car je ne close pas les pipe avec clear()
+		// m_pipe.pipe_stdin[0] = equal.m_pipe.pipe_stdin[0];
+		// m_pipe.pipe_stdin[1] = equal.m_pipe.pipe_stdin[1];
+		// m_pipe.pipe_stdout[0] = equal.m_pipe.pipe_stdout[0];
+		// m_pipe.pipe_stdout[1] = equal.m_pipe.pipe_stdout[1];
+		// m_pipe.m_pid = equal.m_pipe.m_pid;
 	}
 	return *this;
 }
@@ -70,127 +109,6 @@ void	Request::parseRequest()
 	}
 	// else
 		// std::cout<<"La requete n'as pas encore ete lue jusqu'a la fin des Headers"<<std::endl;
-}
-
-// Checker si le client peut envoyer une nouvelle requete alors qu'il na pas eud e reponse a la precedente DISCORD
-// Attention cas ou le chunked de fin est recu et donc on repond a la requete mais que de la donnee est encore envoye sur la socket
-// This function handle chunked request by extracting chunked body of different chunked part in a tmp vector<unsigned char> to use it as a normal Body
-// While webserv stocks the received request, it parses the body. When one or more chunked are full (Size in hexadecimal : Chunked Body of defined size),
-// It exctracts each chunked body until last chunked is received
-void	Request::handleChunked()
-{
-	if (m_chunked && (m_read.size() > m_body_pos + 4) && m_error_code == 0)// Si c'est une request Chunked, qu'on a un Body et aucune erreur
-	{
-		// std::cout<<"\n\nTEST [Appel a la fonction handleChunked()]"<<std::endl;
-		std::vector<unsigned char>::iterator bodyStart = m_read.begin() + m_body_pos + 4;
-		const std::string crlf = "\r\n";
-		int	pos = 0;
-		while (1)
-		{
-			// std::cout<<"TEST [Debut de boucle] pos = "<<pos<<std::endl;
-			if (m_end_of_chunked) // Cas ou on recoit encore alors qu'on a atteint deja le chunk de fin
-			{
-				m_error_code = 400;
-				return ;
-			}
-			// CHECK LA PRESENCE D'UN HEXA POTENTIEL
-			// std::cout<<"TEST [Pas de body en surplus] pos = "<<pos<<std::endl;
-			std::vector<unsigned char>::iterator it = std::search(bodyStart + pos, m_read.end(), crlf.begin(), crlf.end());
-			if (it == m_read.end())
-			{
-				m_read.erase(bodyStart, bodyStart + pos);
-				break ;
-			}
-			// std::cout<<"TEST [verification dun CRLF de fin de hexa] pos = "<<pos<<std::endl;
-			// CHECK VALIDITE L'HEXA
-			std::string	hexaStr = std::string(bodyStart + pos, it);
-			int	size = hexaToInt(hexaStr);
-			// std::cout<<"Affichage de hexaStr = "<<hexaStr<<std::endl;
-			// std::cout<<"Affichage de hexa convertit en int  = "<<size<<std::endl;
-			if (size == -1)
-			{
-				m_end_of_chunked = true;
-				return ;
-			}
-			// std::cout<<"TEST [size correcte] pos = "<<pos<<std::endl;
-			pos += hexaStr.size() + 2;// Ajout du CRLF
-			// CHECK SI LE CHUNK EST COMPLET
-			if (std::distance(bodyStart + pos, m_read.end()) < size + 2)
-			{
-				m_read.erase(bodyStart, bodyStart + pos - (hexaStr.size() + 2));
-				break;
-			}
-			// std::cout<<"TEST [Assez de taille pour un Content complet] pos = "<<pos<<std::endl;
-			// CHECK DU FORMAT CRLF A LA FIN DU BODY CHUNKED
-			if (bodyStart + pos + size != std::search(bodyStart + pos + size, m_read.end(), crlf.begin(), crlf.end()))
-			{
-				m_end_of_chunked = true;
-				m_error_code = 400;
-				return ;
-			}
-			// std::cout<<"TEST [Format CRLF apres le content ] pos = "<<pos<<std::endl;
-			if (size == 0)
-			{
-				lastChunk(bodyStart, pos, size);
-				return ;
-			}
-			// std::cout<<"TEST[Not lastChunk on insert dans chunked_body] pos = "<<pos<<std::endl;
-			m_chunked_body.insert(m_chunked_body.end(), bodyStart + pos, bodyStart + pos + size);
-			pos += size + 2;
-		}
-	}
-}
-
-// This function is called when last chunk is found. It clears read request body, put instead unchunked body
-// and clear the vector that stored unchunked body
-void	Request::lastChunk(std::vector<unsigned char>::iterator & bodyStart, int pos, int size)
-{
-	m_end_of_chunked = true;
-	if (m_chunked_body.size() == 0)// Cas d'une requete Chunked vide (directement chunk vide)
-	{
-		m_error_code = 400;
-		return ;
-	}
-	// std::cout<<"AFFICAHE DE CE QUI A ETE RECU ET TRAITER DANS lastCHUNK :"<<std::endl;
-	// for (std::vector<unsigned char>::iterator print = bodyStart; print != bodyStart + pos + size + 2; ++print)// AFFICHAGE DE TEST
-	// 	std::cout<<*print;
-	m_read.erase(bodyStart, bodyStart + pos + size + 2);
-	if (bodyStart != m_read.end())// On a de la donnee apres le chunk de fin
-	{
-		m_error_code = 400;
-		return ;
-	}
-	m_read.insert(m_read.end(), m_chunked_body.begin(), m_chunked_body.end());
-	m_chunked_body.erase(m_chunked_body.begin(), m_chunked_body.end());
-	m_body_pos += 4;
-	return ;
-}
-
-// curl -X POST -d "" http://example.com/path
-// This function convert a string representing an hexadecimal number in int
-int	Request::hexaToInt(std::string const & toConvert)
-{
-	if (toConvert.empty())
-	{
-		// PRINT_RED("Empty string to Convert in hexadecimal")<<std::endl;
-		m_error_code = 400;
-		return -1;
-	}
-	char *end;
-	long int	result = strtol(toConvert.c_str(), &end, 16);
-	if (end == toConvert.c_str() || *end != '\0')
-	{
-		// PRINT_RED("Invalid digits found in string hexadecimal")<<std::endl;
-		m_error_code = 400;
-		return -1;
-	}
-	if (result > INT_MAX || result < 0)
-	{
-		// PRINT_RED("Hexa value out of rnge for int")<<std::endl;
-		m_error_code = 400;
-		return -1;
-	}
-	return static_cast<int>(result);
 }
 
 // This function parse the RequestLine (the first one)
@@ -408,6 +326,7 @@ bool	Request::checkContentLengthValue(std::string & value, long long &content_le
 // To process Request
 void	Request::checkBody()
 {
+	// PRINT_GREEN("checkbody called")<<std::endl;
 	// std::cout<<"Body position element == "<<m_read[m_body_pos]<<std::endl;
 	// std::cout<<" Body pos == "<<m_body_pos<<std::endl;
 	if (m_method == "POST" && !m_chunked)
@@ -435,6 +354,126 @@ void	Request::checkBody()
 	}
 }
 
+// Checker si le client peut envoyer une nouvelle requete alors qu'il na pas eud e reponse a la precedente DISCORD
+// Attention cas ou le chunked de fin est recu et donc on repond a la requete mais que de la donnee est encore envoye sur la socket
+// This function handle chunked request by extracting chunked body of different chunked part in a tmp vector<unsigned char> to use it as a normal Body
+// While webserv stocks the received request, it parses the body. When one or more chunked are full (Size in hexadecimal : Chunked Body of defined size),
+// It exctracts each chunked body until last chunked is received
+void	Request::handleChunked()
+{
+	if (m_chunked && (m_read.size() > m_body_pos + 4) && m_error_code == 0)// Si c'est une request Chunked, qu'on a un Body et aucune erreur
+	{
+		// std::cout<<"\n\nTEST [Appel a la fonction handleChunked()]"<<std::endl;
+		std::vector<unsigned char>::iterator bodyStart = m_read.begin() + m_body_pos + 4;
+		const std::string crlf = "\r\n";
+		int	pos = 0;
+		while (1)
+		{
+			// std::cout<<"TEST [Debut de boucle] pos = "<<pos<<std::endl;
+			if (m_end_of_chunked) // Cas ou on recoit encore alors qu'on a atteint deja le chunk de fin
+			{
+				m_error_code = 400;
+				return ;
+			}
+			// CHECK LA PRESENCE D'UN HEXA POTENTIEL
+			// std::cout<<"TEST [Pas de body en surplus] pos = "<<pos<<std::endl;
+			std::vector<unsigned char>::iterator it = std::search(bodyStart + pos, m_read.end(), crlf.begin(), crlf.end());
+			if (it == m_read.end())
+			{
+				m_read.erase(bodyStart, bodyStart + pos);
+				break ;
+			}
+			// std::cout<<"TEST [verification dun CRLF de fin de hexa] pos = "<<pos<<std::endl;
+			// CHECK VALIDITE L'HEXA
+			std::string	hexaStr = std::string(bodyStart + pos, it);
+			int	size = hexaToInt(hexaStr);
+			// std::cout<<"Affichage de hexaStr = "<<hexaStr<<std::endl;
+			// std::cout<<"Affichage de hexa convertit en int  = "<<size<<std::endl;
+			if (size == -1)
+			{
+				m_end_of_chunked = true;
+				return ;
+			}
+			// std::cout<<"TEST [size correcte] pos = "<<pos<<std::endl;
+			pos += hexaStr.size() + 2;// Ajout du CRLF
+			// CHECK SI LE CHUNK EST COMPLET
+			if (std::distance(bodyStart + pos, m_read.end()) < size + 2)
+			{
+				m_read.erase(bodyStart, bodyStart + pos - (hexaStr.size() + 2));
+				break;
+			}
+			// std::cout<<"TEST [Assez de taille pour un Content complet] pos = "<<pos<<std::endl;
+			// CHECK DU FORMAT CRLF A LA FIN DU BODY CHUNKED
+			if (bodyStart + pos + size != std::search(bodyStart + pos + size, m_read.end(), crlf.begin(), crlf.end()))
+			{
+				m_end_of_chunked = true;
+				m_error_code = 400;
+				return ;
+			}
+			// std::cout<<"TEST [Format CRLF apres le content ] pos = "<<pos<<std::endl;
+			if (size == 0)
+			{
+				lastChunk(bodyStart, pos, size);
+				return ;
+			}
+			// std::cout<<"TEST[Not lastChunk on insert dans chunked_body] pos = "<<pos<<std::endl;
+			m_chunked_body.insert(m_chunked_body.end(), bodyStart + pos, bodyStart + pos + size);
+			pos += size + 2;
+		}
+	}
+}
+
+// This function is called when last chunk is found. It clears read request body, put instead unchunked body
+// and clear the vector that stored unchunked body
+void	Request::lastChunk(std::vector<unsigned char>::iterator & bodyStart, int pos, int size)
+{
+	m_end_of_chunked = true;
+	if (m_chunked_body.size() == 0)// Cas d'une requete Chunked vide (directement chunk vide)
+	{
+		m_error_code = 400;
+		return ;
+	}
+	// std::cout<<"AFFICAHE DE CE QUI A ETE RECU ET TRAITER DANS lastCHUNK :"<<std::endl;
+	// for (std::vector<unsigned char>::iterator print = bodyStart; print != bodyStart + pos + size + 2; ++print)// AFFICHAGE DE TEST
+	// 	std::cout<<*print;
+	m_read.erase(bodyStart, bodyStart + pos + size + 2);
+	if (bodyStart != m_read.end())// On a de la donnee apres le chunk de fin
+	{
+		m_error_code = 400;
+		return ;
+	}
+	m_read.insert(m_read.end(), m_chunked_body.begin(), m_chunked_body.end());
+	m_chunked_body.erase(m_chunked_body.begin(), m_chunked_body.end());
+	m_body_pos += 4;
+	return ;
+}
+
+// This function convert a string representing an hexadecimal number in int
+int	Request::hexaToInt(std::string const & toConvert)
+{
+	if (toConvert.empty())
+	{
+		// PRINT_RED("Empty string to Convert in hexadecimal")<<std::endl;
+		m_error_code = 400;
+		return -1;
+	}
+	char *end;
+	long int	result = strtol(toConvert.c_str(), &end, 16);
+	if (end == toConvert.c_str() || *end != '\0')
+	{
+		// PRINT_RED("Invalid digits found in string hexadecimal")<<std::endl;
+		m_error_code = 400;
+		return -1;
+	}
+	if (result > INT_MAX || result < 0)
+	{
+		// PRINT_RED("Hexa value out of rnge for int")<<std::endl;
+		m_error_code = 400;
+		return -1;
+	}
+	return static_cast<int>(result);
+}
+
 /***********************************************************************************************************
  *                                                                                                         *
  *                                              PROCESS REQUEST                                            *
@@ -445,8 +484,12 @@ void	Request::processRequest(std::vector<Config> & m_config, Response & response
 {
 	// FIND VIRTUAL SERVER
 	// FIND LOCATION??
-	// Check CGI
-	if (m_method == "GET")
+	// Check CGI si CGI appele processCGI directement et metre m_cgi a true
+	PRINT_GREEN("processRequest called")<<std::endl;
+	// std::cout<<"TEST fin de uri => "<<m_uri[m_uri.size() - 3]<<m_uri[m_uri.size() - 2]<<m_uri[m_uri.size() - 1]<<std::endl;
+	if (m_uri[m_uri.size() - 3] == '.' && m_uri[m_uri.size() - 2] == 'p' && m_uri[m_uri.size() - 1] == 'y')
+		processCGI();
+	else if (m_method == "GET")
 		processGet(m_config[0], response);
 	else if (m_method == "POST")
 		processPost(m_config[0], response);
@@ -461,10 +504,10 @@ void	Request::processGet(Config & config, Response & response)
 {
 	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
 	// Recherche du bloc Location ?
-	// Check CGI ou pas
 	// en vrai il faudrait trouver la base equivalent a "/test" ici dans l'objet config
 	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
 	(void)config;
+	PRINT_GREEN("processGet Called")<<std::endl;
 	std::string ressource = "test" + m_uri; // Attention au cas ou ressource est un Directory
 	if (!checkRessourceAccessibilty(ressource))
 		return ;
@@ -539,8 +582,8 @@ void	Request::processDelete(Config & config, Response & response)
 	(void)config;
 	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
 	// Recherche du bloc Location ?
-	// Check CGI ou pas => Error 405 ?
 	// Initialisation de ressource grace a la config
+	PRINT_GREEN("processDelete Called")<<std::endl;
 	std::string ressource = "test" + m_uri;
 	if (!checkRessourceAccessibilty(ressource))
 		return ;
@@ -573,14 +616,13 @@ void	Request::processPost(Config & config, Response & response)
 	(void)response;
 	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
 	// Recherche du bloc Location ?
-	// Check CGI ou pas
 	// PRINT_GREEN("BODY RECEIVED SIZE : ")<<std::distance(m_read.begin() + m_body_pos, m_read.end())<<std::endl;
 	// std::cout<<"\nRequest received :\n["<<std::endl;
 	// for (std::vector<unsigned char>::iterator it = m_read.begin(); it != m_read.end(); ++it)// AFFICHAGE DE TEST
 	// 		std::cout<<*it;
 	// std::cout<<" ]"<<std::endl;
 	// std::string ressource = "test" + m_uri;
-	// PRINT_GREEN("processPost Called")<<std::endl;
+	PRINT_GREEN("processPost Called")<<std::endl;
 	std::vector<unsigned char>	request_body(m_read.begin() + m_body_pos, m_read.end());
 	mapString::iterator it = m_headers.find("Content-Type:");
 	if (it != m_headers.end() && (it->second.find("multipart/form-data") != std::string::npos))
@@ -615,17 +657,15 @@ bool	Request::checkFileUpload()
 // This function store the body sent by the client in webserv's database
 void	Request::stockData(std::vector<unsigned char> const & body)
 {
-	// std::vector<unsigned char>	body(m_read.begin() + m_body_pos, m_read.end());
-	// PRINT_RED("Le body extrait de m_read est de taille : ")<<body.size()<<std::endl;
-	FILE* file = fopen("test/DataBaseWebserv.txt", "ab");// en mode binaire append
+	std::ofstream file("test/DataBaseWebserv.txt", std::ios::binary | std::ios::app);
 	if (!file)
 	{
 		PRINT_RED("Error : Imposible to open Webserv Data Base.")<<std::endl;
 		m_error_code = 500;
 		return ;
 	}
-	size_t written = fwrite(&body[0], 1, body.size(), file);
-	if (written != body.size())
+	file.write(reinterpret_cast<const char*>(&body[0]), body.size());// Pb de perte de donnee avec du binaire ?
+	if (!file)
 	{
 		PRINT_RED("Error writting Data Base")<<std::endl;
 		m_error_code = 500;// ???
@@ -633,10 +673,9 @@ void	Request::stockData(std::vector<unsigned char> const & body)
 	else
 	{
 		m_response_code = 201;// A checker
-		fputc('\n', file);
-		fputc('\n', file);
+		file << '\n' << '\n';
 	}
-	fclose(file);
+	file.close();
 }
 
 // This function receive the Content-Disposition value and check if it contains a valid filename
@@ -678,22 +717,22 @@ void	Request::uploadFile(std::vector<unsigned char> &boundary_body)
 	}
 	else
 	{
-		FILE* file = fopen(location.c_str(), "wb");// en mode write binaire
+		std::ofstream file(location.c_str(), std::ios::binary);
 		if (!file)
 		{
-			PRINT_RED("Error : Imposible to open file.")<<std::endl;
+			PRINT_RED("Error : Imposible to open Webserv Data Base.")<<std::endl;
 			m_error_code = 500;
 			return ;
 		}
-		size_t written = fwrite(&boundary_body[0], 1, boundary_body.size(), file);
-		if (written != boundary_body.size())
+		file.write(reinterpret_cast<const char*>(&boundary_body[0]), boundary_body.size());// Pb de perte de donnee avec du binaire ?
+		if (!file)
 		{
-			PRINT_RED("Error writting file.")<<std::endl;
-			m_error_code = 500;
+			PRINT_RED("Error writting Data Base")<<std::endl;
+			m_error_code = 500;// ???
 		}
 		else
-			m_response_code = 201;
-		fclose(file);
+			m_response_code = 201;// A checker
+		file.close();
 	}
 }
 
@@ -825,6 +864,221 @@ std::string	Request::extractBoundary(std::string & contentTypeValue)
 
 /***********************************************************************************************************
  *                                                                                                         *
+ *                                                PROCESS CGI                                              *
+ *                                                                                                         *
+ ***********************************************************************************************************/
+
+// REQUEST_METHOD SCRIPT_NAME QUERY_STRING
+// CONTENT_TYPE CONTENT_LENGTH SERVER_PROTOCOL PATH_INFO
+// A MODIFIER avec Config !!!
+void	Request::setEnv(char **env)
+{
+	m_pipe.request_method = "REQUEST_METHOD=" + m_method;
+	env[0] = &m_pipe.request_method[0];
+	// trouver le script name dans uri => le reste = PATH_INFO
+	m_pipe.script_name = "SCRIPT_NAME=test" + m_uri;
+	env[1] = &m_pipe.script_name[0];
+	m_pipe.query_string = "QUERY_STRING=";
+	if (!m_query.empty())
+		m_pipe.query_string += m_query;
+	env[2] = &m_pipe.query_string[0];
+	mapString::iterator contentType = m_headers.find("Content-Type:");
+	if (contentType != m_headers.end())
+		m_pipe.CType = "CONTENT_TYPE=" + contentType->second;
+	env[3] = &m_pipe.CType[0];
+	mapString::iterator contentLength = m_headers.find("Content-Length:");
+	if (contentLength != m_headers.end())
+		m_pipe.CLength = "CONTENT_LENGTH=" + contentLength->second;
+	// std::cout<<"TEST : "<<CLength<<std::endl;
+	env[4] = &m_pipe.CLength[0];
+	m_pipe.server = "SERVER_PROTOCOL=HTTP/1.1";
+	env[5] = &m_pipe.server[0];
+	env[6] = NULL;
+}
+
+// A MODIFIER avec Config
+void	Request::setArg(char **arg)
+{
+	m_pipe.ressource = "test" + m_uri;
+	m_pipe.bin ="/usr/bin/python";
+	arg[0] = &m_pipe.ressource[0];
+	arg[1] = &m_pipe.bin[0];
+	arg[2] = NULL;
+}
+
+bool	Request::setPipe()
+{
+	// PRINT_GREEN("pipe creation")<<std::endl;
+	if (pipe(m_pipe.pipe_stdout) == -1)
+	{
+		PRINT_RED("Error pipe")<<std::endl;
+		m_error_code = 500;
+		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
+		m_cgi = false; // Pour generer la reponse
+		return false;
+	}
+	if (m_method == "POST")
+	{
+		if (pipe(m_pipe.pipe_stdin) == -1 )
+		{
+			PRINT_RED("Error pipe")<<std::endl;
+			m_pipe.clear();
+			m_error_code = 500;
+			// PRINT_RED("Mise a false de m_cgi")<<std::endl;
+			m_cgi = false; // Pour generer la reponse
+			return false;
+		}
+	}
+	// PRINT_GREEN("Pipe non bloquant")<<std::endl;
+	// MISE EN MODE NON BLOQUANT DES PIPES
+	if (fcntl(m_pipe.pipe_stdout[0], F_SETFL, O_NONBLOCK) < 0 || fcntl(m_pipe.pipe_stdout[1], F_SETFL, O_NONBLOCK) < 0)
+	{
+		PRINT_GREEN("Error fcntl pipe")<<std::endl;
+		m_pipe.clear();
+		m_error_code = 500;
+		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
+		m_cgi = false; // Pour generer la reponse
+		return false;
+	}
+	if (m_method == "POST")
+	{
+		if (fcntl(m_pipe.pipe_stdin[0], F_SETFL, O_NONBLOCK) < 0 || fcntl(m_pipe.pipe_stdin[1], F_SETFL, O_NONBLOCK) < 0)
+		{
+			PRINT_GREEN("Error fcntl pipe")<<std::endl;
+			m_pipe.clear();
+			m_error_code = 500;
+			// PRINT_RED("Mise a false de m_cgi")<<std::endl;
+			m_cgi = false; // Pour generer la reponse
+			return false;
+		}
+	}
+	return true;
+}
+
+// This function closes unused pipe in child process, redirect child stdin and stdout in
+// pipe created for this purpose, and execute CGI with env and arg given as argument
+void	Request::cgiChildProcess(char **env, char **arg)
+{
+	if (close(m_pipe.pipe_stdout[0]) == -1)//Pipe de lecture de stdout
+	{
+		PRINT_RED("Close error in child process")<<std::endl;
+		signalHandler(SIGINT);
+	}
+	if (m_method == "POST")
+	{
+		if (close(m_pipe.pipe_stdin[1]) == -1)//Pipe d'ecriture stdin
+		{
+			PRINT_RED("Close error in child process")<<std::endl;
+			signalHandler(SIGINT);
+		}
+	}
+	// REDIRECTION
+	if (dup2(m_pipe.pipe_stdout[1], STDOUT_FILENO) == -1)
+	{
+		PRINT_RED("DUP2 Error in child process")<<std::endl;
+		signalHandler(SIGINT);
+	}
+	if (m_method == "POST")
+	{
+		if (dup2(m_pipe.pipe_stdin[0], STDIN_FILENO)== -1)
+		{
+			PRINT_RED("DUP2 Error in child process")<<std::endl;
+			signalHandler(SIGINT);
+		}
+	}
+	// EXECVE
+	if (execve(arg[0], arg, env) == -1) // Gestion plus precise de code de retour ?? (ex permission denied 403 ??)
+	{
+		PRINT_RED("GALERE")<<std::endl;
+		perror("execve");
+		signalHandler(SIGINT);
+	}
+}
+
+// This function closes unused pipe in the parent ans stock pid to kill child process if necessary
+void	Request::cgiParentProcess(pid_t pid)
+{
+	m_pipe.m_pid = pid;
+	// PRINT_RED("PID parent = ")<<pid<<std::endl;
+	// PRINT_GREEN("TEST PARENT PROCESS")<<std::endl;
+	// PID A TUER pour eviter les fantomes
+	if (close(m_pipe.pipe_stdout[1]) == -1)//Pipe d'ecriture stdout
+	{
+		PRINT_RED("Close error in parent process")<<std::endl;
+		kill(m_pipe.m_pid, SIGINT);
+		// attendre la fin du child
+		// puis fermer les pipes du parent
+		m_error_code = 500;
+		m_pipe.clear();
+		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
+		m_cgi = false; // Pour generer la reponse
+		return ;
+	}
+	m_pipe.pipe_stdout[1] = 0;
+	if (m_method == "POST")
+	{
+		if (close(m_pipe.pipe_stdin[0]) == -1)//Pipe de lecture stdin
+		{
+			PRINT_RED("Close error in parent process")<<std::endl;
+			kill(m_pipe.m_pid, SIGINT);
+			// attendre la fin du child
+			// puis fermer les pipes du parent
+			m_pipe.pipe_stdout[1] = 0;
+			m_pipe.clear();
+			m_error_code = 500;
+			// PRINT_RED("Mise a false de m_cgi")<<std::endl;
+			m_cgi = false; // Pour generer la reponse
+		}
+		m_pipe.pipe_stdin[0] = 0;
+	}
+	// std::cout<<"pipe_stdin[] == "<<m_pipe.pipe_stdin[1]<<" pipe_stdout[0] == "<<m_pipe.pipe_stdout[0]<<std::endl;
+}
+
+void	Request::processCGI()
+{
+	PRINT_GREEN("ProcessCGI called")<<std::endl;
+	m_cgi = true; // Pour faire cette logique une fois seulement
+	// Recherche du bloc Location
+	// Controle de la Config !! trouver le script dans l'URL sinon 404
+	// Check de toute la config methode autorisee etc
+	if (m_method == "DELETE")
+	{
+		m_error_code = 403;// a verifier
+		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
+		m_cgi = false; // Pour generer la reponse
+		return ;
+	}
+	// SET ENV / SET ARG
+	// PRINT_GREEN("set Env")<<std::endl;
+	char *env[7];
+	setEnv(env);
+	char *arg[3];
+	setArg(arg);
+	// CREATION DE PIPE
+	if (!setPipe())
+		return ;
+	// FORK
+	// PRINT_GREEN("Fork")<<std::endl;
+	pid_t pid = fork();
+	if (pid == 0)
+	{
+		// PRINT_RED("PID child = ")<<pid<<std::endl;
+		cgiChildProcess(env, arg);
+	}
+	else if ( pid > 0)//Parent process
+		cgiParentProcess(pid);
+	else // Fork error
+	{
+		PRINT_RED("Fork error : ")<<strerror(errno)<<std::endl;
+		m_pipe.clear();
+		m_error_code = 500;
+		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
+		m_cgi = false;
+	}
+}
+
+/***********************************************************************************************************
+ *                                                                                                         *
  *                                                MAINTENANCE                                              *
  *                                                                                                         *
  ***********************************************************************************************************/
@@ -847,6 +1101,7 @@ bool	Request::isKeepAlive()
 
 void	Request::clear()
 {
+	// PRINT_RED("Mise a false de m_cgi [request.clear] : ")<<m_uri<<std::endl;
 	m_read.clear();
 	m_chunked_body.clear();
 	m_ready = false;
@@ -861,8 +1116,10 @@ void	Request::clear()
 	m_error_code = 0;
 	m_response_code = 0;
 	m_headers.clear();
-	// m_left_to_read = 0;
-	// m_already_stocked = 0;
+	m_cgi = false;
+	m_filename.clear();
+	m_pipe.clear(); // Bool remis a false [Pipe a checker]
+	// m_pipe => normalement rien a faire puisque tout sera close et a 0a faire en fin de reponse HTTP
 }
 
 // A faire :
@@ -873,3 +1130,15 @@ void	Request::clear()
 //			-Penser a l'affichage final
 //			-Mettre une limite de fichier upload adequate ?
 //			-Gerer les code de reponse pour multipart ! (On verra lors du testeur) + bloc vide multipart (400 ? pour etre coherent avec le reste)
+
+//			-Est ce qu'on doit gerer plusieurs CGI donc tolerer plusieurs config ou uniquement le CGI python ?
+//			-Grosse quantite de donnee a transmettre via CGI (pipe limite a 64Ko) : Gerer le buffer de lecture et ecriture dans le pipe Car logiquement le systeme asynchrone
+//			 devrait pouvoir permettre la transmission de donnee volumineuse tant que la lecture et lecriture se fait petit a petit
+
+//			-Possible derniers petits cas de Broken pipe => Solution prioritaire faire un waitpid apres chaque kill
+//			-Un cas de broken pipe que je ne retrouve plus. C'est dans un enchainement de requete CGI.
+//			-Cas d'un script cgi boucle infini + une autre requete = Brokenpipe car dans la fonction handlingKeepAlive
+//			 pour une raison inconnue m_cgi est a false et donc on ne kill pas le child process qui est encore dans une boucle infinie
+//			 Edit : Probleme de constructeur de copy et d'assignation dans mes classe qui sont utilise dans la logique de vecteur donc lors de l'acceptation
+//					d'une nouvelle connexion la connexion CGI etait comme reset puisque mal copie donc considere comme non CGI donc pas de kill et de close des pipe
+//					Aussi, se posait leprobleme de l'appel a close dans le destructeur de request et ou PipeHandler

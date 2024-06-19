@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 11:52:42 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/06 12:04:15 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/14 14:17:25 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 // C++ Versions of C Library
 #include <cstdlib>
@@ -52,7 +53,7 @@
 //#define REQUESTLINE_MAX_SIZE 8192 // 8Ko =? 414 Request-URI Too Long
 #define HEADERLINE_MAX_SIZE 8192 // 8Ko => 431 Request Fields Too Large
 #define HEADERTOTAL_MAX_SIZE 16384 //16Ko => 431 Request Fields Too Large
-//#define REQUEST_MAX_SIZE 65536 //64Ko => 413 Payload Too Large
+// #define REQUEST_MAX_SIZE 65536 //64Ko => 413 Payload Too Large
 #define MEGAOCTET	1048576
 
 #define TIMEOUT 30
