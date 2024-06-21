@@ -6,14 +6,15 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/17 16:02:43 by clbernar          #+#    #+#             */
-/*   Updated: 2024/05/29 19:17:47 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/21 13:19:11 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #pragma once
 
 #include "webserv.hpp"
-#include "Config.hpp"
+// #include "Config.hpp"
+#include "ServerConfig.hpp"// ???
 
 class Request;
 

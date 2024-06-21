@@ -6,14 +6,15 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:23:59 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/19 13:14:45 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/21 13:17:43 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #pragma once
 
 #include "webserv.hpp"
-#include "Config.hpp"
+// #include "Config.hpp"
+#include "ServerConfig.hpp"
 #include "Response.hpp"
 
 class Request
@@ -74,14 +75,18 @@ class Request
 	void			lastChunk(std::vector<unsigned char>::iterator & bodyStart, int pos, int size);
 
 	// PROCESS REQUEST
-	void			processRequest(std::vector<Config> & m_config, Response & response);
+	// void			processRequest(std::vector<Config> & m_config, Response & response);
+	void			processRequest(std::vector<ServerConfig> & m_config, Response & response);
 	// Get
-	void			processGet(Config & config, Response & response);
+	// void			processGet(Config & config, Response & response);
+	void			processGet(ServerConfig & config, Response & response);
 	bool			checkRessourceAccessibilty(std::string const & ressource);
 	// Delete
-	void			processDelete(Config & config, Response & response);
+	// void			processDelete(Config & config, Response & response);
+	void			processDelete(ServerConfig & config, Response & response);
 	// Post
-	void			processPost(Config & config, Response & response);
+	// void			processPost(Config & config, Response & response);
+	void			processPost(ServerConfig & config, Response & response);
 	void			stockData(std::vector<unsigned char> const & body);
 	bool			checkFileUpload();// a voir si je ne retourne pas une string pour ne pas srucharger ma request
 	void			extractFilename(std::string & toExtract);
@@ -94,7 +99,7 @@ class Request
 	void			resetMultipart();
 
 	// PROCESS CGI
-	void			processCGI();
+	void			processCGI(ServerConfig & config);
 	void			setEnv(char **env);
 	void			setArg(char **arg);
 	bool			setPipe();

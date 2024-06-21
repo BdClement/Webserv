@@ -6,12 +6,13 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 12:55:53 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/19 17:41:31 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/21 18:54:48 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Handler.hpp"
-#include "Config.hpp"
+// #include "ServerConfig.hpp"
+#include "ConfigParser.hpp"
 
 struct clearFromHanlder global = {NULL, NULL, NULL, 0};
 
@@ -87,15 +88,15 @@ bool	Handler::isListenningConnection(int const socket)
 }
 
 // UTILS This function checks if a socket has already been created for an interface
-bool	Handler::interfaceAlreadyExist(std::vector<Config>::iterator const& toFind)
+bool	Handler::interfaceAlreadyExist(std::vector<ServerConfig>::iterator const& toFind)
 {
-	for (std::vector<Config>::iterator it = m_config.begin(); it != m_config.end(); ++it)
+	for (std::vector<ServerConfig>::iterator it = m_config.begin(); it != m_config.end(); ++it)
 	{
 		if (it == toFind)
 			return false;
-		if (it->listen_addr == toFind->listen_addr && it->listen_port == toFind->listen_port)
+		if (it->_host == toFind->_host && it->_port == toFind->_port)
 		{
-			PRINT_RED("Socket not created")<<" interface ["<<toFind->listen_addr<<":"<<toFind->listen_port<<"]. This interface already has a dedicated socket."<<std::endl;
+			PRINT_RED("Socket not created")<<" interface ["<<toFind->_host<<":"<<toFind->_port<<"]. This interface already has a dedicated socket."<<std::endl;
 			return true;
 		}
 	}
@@ -116,23 +117,47 @@ bool	Handler::interfaceAlreadyExist(std::vector<Config>::iterator const& toFind)
 // Rien de declarer, juste un server name. juste un port , juste une IP
 // Une IP et un port , IP et server name, port et server name
 // Plusieurs interfaces similaires avec / sans server name
-void	Handler::initTestConfig()// PARTIE PARSING
+// void	Handler::initTestConfig()// PARTIE PARSING
+// {
+// 	Config	test1("127.0.0.1", 8080, "");
+// 	Config	test2("0.0.0.0", 8080, "");
+// 	Config	test3("127.0.0.1", 1025, "");
+// 	Config	test4("0.0.0.0", 1028, "");
+// 	Config	test5("127.0.0.1", 8080, "test.42.fr");
+// 	Config	test6("0.0.0.0", 8080, "");
+// 	m_config.push_back(test1);
+// 	m_config.push_back(test2);
+// 	m_config.push_back(test3);
+// 	m_config.push_back(test4);
+// 	m_config.push_back(test5);
+// 	m_config.push_back(test6);
+// 	// std::cout<<"Test initialisation des objets Config"<<std::endl;
+// 	// for (int i = 0; i < 6; ++i)
+// 	// 	std::cout<<m_config[i].listen_addr<<" "<<m_config[i].listen_port<<" "<<m_config[i].server_name<<std::endl;
+// }
+
+bool	Handler::initTestConfig(char * arg)
 {
-	Config	test1("127.0.0.1", 8080, "");
-	Config	test2("0.0.0.0", 8080, "");
-	Config	test3("127.0.0.1", 1025, "");
-	Config	test4("0.0.0.0", 1028, "");
-	Config	test5("127.0.0.1", 8080, "test.42.fr");
-	Config	test6("0.0.0.0", 8080, "");
-	m_config.push_back(test1);
-	m_config.push_back(test2);
-	m_config.push_back(test3);
-	m_config.push_back(test4);
-	m_config.push_back(test5);
-	m_config.push_back(test6);
-	// std::cout<<"Test initialisation des objets Config"<<std::endl;
-	// for (int i = 0; i < 6; ++i)
-	// 	std::cout<<m_config[i].listen_addr<<" "<<m_config[i].listen_port<<" "<<m_config[i].server_name<<std::endl;
+	ConfigParser servers;
+	std::string configFile = arg;
+	try
+	{
+		// si ca marche pas je lui donne en argument une reference du vector
+		// configFile = arg;//(arg == 1 ? "test.conf" : arg);
+		servers.createServers(configFile);
+		servers.printServers();
+		m_config = servers._servers;// Faire un getter ??
+	}
+	catch(const std::exception& e)
+	{
+		std::cout << e.what() << std::endl;
+		return false;
+		// std::vector<ServerConfig>().swap(servers._servers);
+		// signalHandler(SIGINT);
+		// exit(EXIT_FAILURE);
+		// return (1);
+	}
+	return true;
 }
 
 /***********************************************************************************************************
@@ -161,10 +186,10 @@ void	Handler::initServer()
 		exit(errno);
 	}
 	std::cout<<"\n*****************   SERVER INITIALIATION   *****************\n"<<std::endl;
-	for (std::vector<Config>::iterator it = m_config.begin(); it != m_config.end(); ++it)
+	for (std::vector<ServerConfig>::iterator it = m_config.begin(); it != m_config.end(); ++it)
 	{
 	            //    ************************************************************
-		std::cout<<"\n\n==== Config Block "<<(i++ + 1)<<" ===="<<std::endl;
+		std::cout<<"\n\n==== ServerConfig Block "<<(i++ + 1)<<" ===="<<std::endl;
 		if (!interfaceAlreadyExist(it))
 		{
 			Connection	new_connection;
@@ -174,7 +199,7 @@ void	Handler::initServer()
 			std::cout<<"--- Binding socket to interface ---"<<std::endl;
 			if (bind(new_connection.socket, (struct sockaddr *)&(new_connection.interface), sizeof(new_connection.interface)) == -1)
 			{
-				PRINT_RED("\tFail")<<" : Socket "<<new_connection.socket<<" to interface "<<it->listen_addr<<":"<<it->listen_port<<" : "<<strerror(errno)<<std::endl;
+				PRINT_RED("\tFail")<<" : Socket "<<new_connection.socket<<" to interface "<<it->_host<<":"<<it->_port<<" : "<<strerror(errno)<<std::endl;
 				if (close(new_connection.socket) == -1)
 					PRINT_RED("Closing socket failed : ")<<strerror(errno)<<std::endl;
 				continue;
@@ -198,14 +223,14 @@ void	Handler::initServer()
 			if (epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, new_connection.socket, &(new_connection.event)) == -1)
 				PRINT_RED("\tFail : ")<<strerror(errno)<<std::endl;
 			else
-				PRINT_GREEN("\tSuccess")<<" : socket "<<new_connection.socket<<" to interface ["<<it->listen_addr<<":"<<it->listen_port<<"]"<<std::endl;
+				PRINT_GREEN("\tSuccess")<<" : socket "<<new_connection.socket<<" to interface ["<<it->_host<<":"<<it->_port<<"]"<<std::endl;
 		}
 	}
 	PRINT_GREEN("Initialisation finished")<<". "<<this->m_listen_connection.size()<<" listenning socket(s) created in total.\n"<<std::endl;
 }
 
 // This functions fills structures sockaddr_in and epoll_event of Connection object
-bool	Handler::initListenConnection(std::vector<Config>::iterator & it, Connection & new_connection)
+bool	Handler::initListenConnection(std::vector<ServerConfig>::iterator & it, Connection & new_connection)
 {
 	// SOCKET
 	std::cout<<"--- Socket creation ---"<<std::endl;
@@ -227,14 +252,14 @@ bool	Handler::initListenConnection(std::vector<Config>::iterator & it, Connectio
 	PRINT_GREEN("\tSuccess [Interface and event]")<<std::endl;
 	// INTERFACE
 	new_connection.interface.sin_family = AF_INET;
-	new_connection.interface.sin_port = htons(it->listen_port);
-	if (it->listen_addr == "0.0.0.0")
+	new_connection.interface.sin_port = htons(it->_port);
+	if (it->_host == "0.0.0.0")
 	{
 		std::cout<<"C'est bien rentre mon boug"<<std::endl;
 		new_connection.interface.sin_addr.s_addr = INADDR_ANY;
 	}
 	else
-		new_connection.interface.sin_addr.s_addr = htonl(convertAddr(it->listen_addr));
+		new_connection.interface.sin_addr.s_addr = htonl(convertAddr(it->_host));
 	// //EVENT
 	new_connection.event.events = EPOLLIN;
 	new_connection.event.data.fd = new_connection.socket;
@@ -884,6 +909,24 @@ unsigned long	convertAddr(std::string to_convert)
 	return ip_addr;
 }
 
+// This function convert an unsigned long in std::string to recover and compare Connection's adress
+std::string convertAddrBack(unsigned long ip_addr)
+{
+	unsigned char ip_bytes[4];
+	ip_bytes[0] = (ip_addr >> 24) & 0xFF;
+	ip_bytes[1] = (ip_addr >> 16) & 0xFF;
+	ip_bytes[2] = (ip_addr >> 8) & 0xFF;
+	ip_bytes[3] = ip_addr & 0xFF;
+	std::ostringstream oss;
+	oss << static_cast<int>(ip_bytes[0]) << "."
+		<< static_cast<int>(ip_bytes[1]) << "."
+		<< static_cast<int>(ip_bytes[2]) << "."
+		<< static_cast<int>(ip_bytes[3]);
+
+	return oss.str();
+}
+
+
 // EXPLICATION 1 : La gestion de memoire des vector semble complexe. Apres avoir close toutes les sockets
 // J'avais des still recheable (alors que je n'ai rien alloue dynamiquement) qui provenait donc de mes vector
 // Pour liberer la memoire allouee par le vecteur lui meme, la solution etait d'utiliser shrink_to_fit() pour
@@ -916,7 +959,7 @@ void	signalHandler(int signal_num)
 	// 	// std::vector<std::string>().swap(*global.cgi_strings);
 	// }
 	//VECTOR CONFIG
-	std::vector<Config>().swap(*global.global_config);
+	std::vector<ServerConfig>().swap(*global.global_config);
 	//VECTOR LISTENNING SOCKET
 	std::cout<<"Cleaning listenning sockets ..."<<std::endl;
 	std::for_each(global.global_listen_connection->begin(), global.global_listen_connection->end(), &closeSocket);

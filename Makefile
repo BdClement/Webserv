@@ -22,6 +22,11 @@ SRCS =			$(SRC_DIR)/main.cpp\
 				$(SRC_DIR)/Request.cpp\
 				$(SRC_DIR)/Response.cpp\
 				$(SRC_DIR)/PipeHandler.cpp\
+				$(SRC_DIR)/ConfigParser.cpp\
+				$(SRC_DIR)/ServerConfig.cpp\
+				$(SRC_DIR)/Location.cpp\
+				$(SRC_DIR)/ConfigFile.cpp
+
 
 ## OBJECTS
 
@@ -37,6 +42,10 @@ HD = 			$(HDIR)/webserv.hpp\
 				$(HDIR)/Connection.hpp\
 				$(HDIR)/Request.hpp\
 				$(HDIR)/Response.hpp\
+				$(HDIR)/ConfigParser.hpp\
+				$(HDIR)/ServerConfig.hpp\
+				$(HDIR)/Location.hpp\
+				$(HDIR)/ConfigFile.hpp
 
 INC_HD =		-I $(HDIR)
 

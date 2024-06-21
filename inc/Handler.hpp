@@ -16,8 +16,10 @@
 
 #include "webserv.hpp"
 #include "Connection.hpp"
+#include "ServerConfig.hpp"
 
-class Config;
+// class Config;
+class ServerConfig;
 
 class Handler
 {
@@ -32,15 +34,18 @@ class Handler
 	// UTIILS
 	int		recoverIndexConnection(int const socket) const;
 	bool	isListenningConnection(int const socket);
-	bool	interfaceAlreadyExist(std::vector<Config>::iterator const& toFind);
+	// bool	interfaceAlreadyExist(std::vector<Config>::iterator const& toFind);
+	bool	interfaceAlreadyExist(std::vector<ServerConfig>::iterator const& toFind);
 
 	// PARSING CONFIG FILE
-	void	initTestConfig();//fonction qui joue le role du parsing
+	// void	initTestConfig(char * arg);//fonction qui joue le role du parsing
+	bool	initTestConfig(char * arg);
 
 	// SERVER INITIALISATION
 
 	void	initServer();
-	bool	initListenConnection(std::vector<Config>::iterator & it, Connection & new_connection);// Init struct sockaddr_in et epoll_event
+	// bool	initListenConnection(std::vector<Config>::iterator & it, Connection & new_connection);// Init struct sockaddr_in et epoll_event
+	bool	initListenConnection(std::vector<ServerConfig>::iterator & it, Connection & new_connection);
 
 	// LAUNCHING SERVER
 	void	launchServer();
@@ -69,7 +74,8 @@ class Handler
 
 	private:
 
-	std::vector<Config>			m_config;// Objets issus du Parsing du config file
+	// std::vector<Config>			m_config;// Objets issus du Parsing du config file
+	std::vector<ServerConfig>	m_config;
 	std::vector<Connection>		m_listen_connection;// Sockets d'ecoutes
 	std::vector<Connection>		m_http_connection;// Sockets de communication HTTP
 
@@ -87,7 +93,8 @@ bool operator()(const Connection& obj) const{
 
 // Global structure to exit proprely
 struct clearFromHanlder{
-	std::vector<Config>							* global_config;
+	// std::vector<Config>							* global_config;
+	std::vector<ServerConfig>					* global_config;
 	std::vector<Connection> 					* global_listen_connection;
 	std::vector<Connection> 					* global_http_connection;
 	int											* global_epoll_fd;

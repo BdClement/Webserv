@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:29:28 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/19 17:45:07 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/21 18:56:28 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -480,15 +480,13 @@ int	Request::hexaToInt(std::string const & toConvert)
  *                                                                                                         *
  ***********************************************************************************************************/
 
-void	Request::processRequest(std::vector<Config> & m_config, Response & response)
+void	Request::processRequest(std::vector<ServerConfig> & m_config, Response & response)
 {
-	// FIND VIRTUAL SERVER
-	// FIND LOCATION??
-	// Check CGI si CGI appele processCGI directement et metre m_cgi a true
+	// FIND VIRTUAL SERVER !
 	PRINT_GREEN("processRequest called")<<std::endl;
 	// std::cout<<"TEST fin de uri => "<<m_uri[m_uri.size() - 3]<<m_uri[m_uri.size() - 2]<<m_uri[m_uri.size() - 1]<<std::endl;
 	if (m_uri[m_uri.size() - 3] == '.' && m_uri[m_uri.size() - 2] == 'p' && m_uri[m_uri.size() - 1] == 'y')
-		processCGI();
+		processCGI(m_config[0]);
 	else if (m_method == "GET")
 		processGet(m_config[0], response);
 	else if (m_method == "POST")
@@ -500,11 +498,10 @@ void	Request::processRequest(std::vector<Config> & m_config, Response & response
 // Attention Header Accept contenu ce qui est envoye ou renvoyer ??
 // This function process a GET Request. If an error occured,it specifies it and stops
 // If not,the ressource asked is placed in the Response object
-void	Request::processGet(Config & config, Response & response)
+void	Request::processGet(ServerConfig & config, Response & response)
 {
+	// FIND LOCATION
 	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
-	// Recherche du bloc Location ?
-	// en vrai il faudrait trouver la base equivalent a "/test" ici dans l'objet config
 	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
 	(void)config;
 	PRINT_GREEN("processGet Called")<<std::endl;
@@ -577,12 +574,12 @@ bool	Request::checkRessourceAccessibilty(std::string const & ressource)
 
 // This function process a Delete request. It checks ressource's accesibility and if the ressource
 // can be deleted it does it, otherwise it prepares error_code to send error_file
-void	Request::processDelete(Config & config, Response & response)
+void	Request::processDelete(ServerConfig & config, Response & response)
 {
 	(void)config;
+	// FIND LOCATION
 	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
-	// Recherche du bloc Location ?
-	// Initialisation de ressource grace a la config
+	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
 	PRINT_GREEN("processDelete Called")<<std::endl;
 	std::string ressource = "test" + m_uri;
 	if (!checkRessourceAccessibilty(ressource))
@@ -610,12 +607,13 @@ void	Request::processDelete(Config & config, Response & response)
 
 // En cas de succes Message sous forme de text en tant que Body
 // "Data received and processed successfully."|| "File uploaded successfully."
-void	Request::processPost(Config & config, Response & response)
+void	Request::processPost(ServerConfig & config, Response & response)
 {
+	// FIND LOCATION
+	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
+	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
 	(void)config;
 	(void)response;
-	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
-	// Recherche du bloc Location ?
 	// PRINT_GREEN("BODY RECEIVED SIZE : ")<<std::distance(m_read.begin() + m_body_pos, m_read.end())<<std::endl;
 	// std::cout<<"\nRequest received :\n["<<std::endl;
 	// for (std::vector<unsigned char>::iterator it = m_read.begin(); it != m_read.end(); ++it)// AFFICHAGE DE TEST
@@ -1034,13 +1032,14 @@ void	Request::cgiParentProcess(pid_t pid)
 	// std::cout<<"pipe_stdin[] == "<<m_pipe.pipe_stdin[1]<<" pipe_stdout[0] == "<<m_pipe.pipe_stdout[0]<<std::endl;
 }
 
-void	Request::processCGI()
+void	Request::processCGI(ServerConfig & config)
 {
+	// FIND LOCATION
+	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
+	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
 	PRINT_GREEN("ProcessCGI called")<<std::endl;
 	m_cgi = true; // Pour faire cette logique une fois seulement
-	// Recherche du bloc Location
-	// Controle de la Config !! trouver le script dans l'URL sinon 404
-	// Check de toute la config methode autorisee etc
+	(void)config;
 	if (m_method == "DELETE")
 	{
 		m_error_code = 403;// a verifier
@@ -1125,15 +1124,14 @@ void	Request::clear()
 // A faire :
 //			-Merge /
 //			-Implementations des fonctionnalites propre a la config
-//			-CGI
+//			 [Page d'erreur par defaut / Limite BodySize / methodes acceptees / redirection
+//			  root a partir de root Server / listing de repositories / file par defaut en cas de repo en uri]
 
 //			-Penser a l'affichage final
 //			-Mettre une limite de fichier upload adequate ?
 //			-Gerer les code de reponse pour multipart ! (On verra lors du testeur) + bloc vide multipart (400 ? pour etre coherent avec le reste)
 
 //			-Est ce qu'on doit gerer plusieurs CGI donc tolerer plusieurs config ou uniquement le CGI python ?
-//			-Grosse quantite de donnee a transmettre via CGI (pipe limite a 64Ko) : Gerer le buffer de lecture et ecriture dans le pipe Car logiquement le systeme asynchrone
-//			 devrait pouvoir permettre la transmission de donnee volumineuse tant que la lecture et lecriture se fait petit a petit
 
 //			-Possible derniers petits cas de Broken pipe => Solution prioritaire faire un waitpid apres chaque kill
 //			-Un cas de broken pipe que je ne retrouve plus. C'est dans un enchainement de requete CGI.
@@ -1142,3 +1140,17 @@ void	Request::clear()
 //			 Edit : Probleme de constructeur de copy et d'assignation dans mes classe qui sont utilise dans la logique de vecteur donc lors de l'acceptation
 //					d'une nouvelle connexion la connexion CGI etait comme reset puisque mal copie donc considere comme non CGI donc pas de kill et de close des pipe
 //					Aussi, se posait leprobleme de l'appel a close dans le destructeur de request et ou PipeHandler
+//					A METTRE DANS LE ACCEPT
+
+
+//			- Dans processRequest, faire une fonction qui trouve le bloc Server correspondant
+//					Pour cela : extraire le port et l'adresse de la connexion. On indique donc dans objet Connection le port et l'adress lors de l'accept
+//					Port extrait grace a ntohs sur in_port_t sin_port de la struct sockaddr_in de l'objet Connection (ntohs(Connection.interface.sin_port))
+//					Address extraite a partir d'un unsigned int recu dans la struct in_add elle meme contenu dans la struct sockaddr_in
+//					element de l'objet connection issu du accept().
+//
+//			- Faire une fonction qui trouvera le bloc Location correspondant qui sera appele dans chaque fonction Process
+//			- Faire une focntion qui fais les check de la requete en fonction de la config trouvee (Server + Location)
+//			- Faire une fonction qui determine la variable ressource en focntion de la config (root)
+//			- Passer en argument la config correspondante pour trouver les variables necessaires en cas de besoin
+//			- Faire uen fonction listing repositories
