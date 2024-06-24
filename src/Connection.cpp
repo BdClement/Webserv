@@ -6,11 +6,12 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/25 15:38:08 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/19 17:47:30 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/24 12:03:15 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Connection.hpp"
+#include "Handler.hpp"
 
 Connection::Connection() : last_active_time(time(NULL))
 {
@@ -30,7 +31,8 @@ Connection::Connection(Connection const& asign)
 	request = asign.request;
 	response = asign.response;
 	last_active_time = asign.last_active_time;
-
+	addr = asign.addr;
+	port = asign.port;
 }
 
 Connection::~Connection()
@@ -53,6 +55,8 @@ Connection& Connection::operator=(Connection const & equal)
 		this->request= equal.request;
 		this->response = equal.response;
 		this->last_active_time = equal.last_active_time;
+		this->addr = equal.addr;
+		this->port = equal.port;
 	}
 	return *this;
 }
@@ -78,3 +82,18 @@ void	Connection::closeRequestCGIPipe()
 	}
 }
 
+bool	Connection::setAddrPort()
+{
+	struct sockaddr_in addr_tmp;
+	socklen_t	len_addr_tmp = sizeof(addr);
+	if (getsockname(this->socket, (struct sockaddr*)&addr_tmp, &len_addr_tmp) == -1)
+	{
+		close(this->socket);
+		PRINT_RED("Error getsockname on new connection : Webserv can't create this new conneciton.")<<std::endl;
+		return false;
+	}
+	this->addr = convertAddrBack(addr_tmp.sin_addr.s_addr);
+	this->port = ntohs(addr_tmp.sin_port);
+	PRINT_RED("Test du port et adresse apres accept : ")<<this->addr<<" : "<<this->port<<std::endl;
+	return true;
+}

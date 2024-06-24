@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   ServerConfig.cpp                                   :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: bmirlico <bmirlico@student.42.fr>          +#+  +:+       +#+        */
+/*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/19 19:12:28 by bmirlico          #+#    #+#             */
-/*   Updated: 2024/06/20 12:55:36 by bmirlico         ###   ########.fr       */
+/*   Updated: 2024/06/24 20:11:43 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -127,7 +127,7 @@ void ServerConfig::setRoot(std::string root)
 void ServerConfig::setPort(std::string input)
 {
 	unsigned int port;
-	
+
 	port = 0;
 	checkSemiColon(input);
 	for (size_t i = 0; i < input.length(); i++)
@@ -146,7 +146,7 @@ void ServerConfig::setPort(std::string input)
 void ServerConfig::setClientMaxBodySize(std::string input)
 {
 	long long body_size;
-	
+
 	body_size = 0;
 	errno = 0;
 	checkSemiColon(input);
@@ -480,11 +480,12 @@ void ServerConfig::setLocation(std::string path, std::vector<std::string> input)
 		}
 	}
 	std::vector<std::string> methodsDefault;
-	newLocation.setMethods(methodsDefault); // met les méthodes du CGI par défaut GET, POST et la méthode GET par défaut pour les blocs location classique
+	if (!flag_methods)
+		newLocation.setMethods(methodsDefault); // met les méthodes du CGI par défaut GET, POST et la méthode GET par défaut pour les blocs location classique
 	this->_locations.push_back(newLocation);
 }
 
-// fonction qui check si 2 blocks location sont identiques ! 
+// fonction qui check si 2 blocks location sont identiques !
 bool ServerConfig::checkDupLocations(void)
 {
 	if (this->_locations.size() < 2)

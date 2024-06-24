@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/17 16:05:07 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/03 16:42:47 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/24 18:41:11 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -81,10 +81,10 @@ void	Response::set_code_meaning()
 	m_code_meaning[505] = "HTTP Version Not Supported";// Le protocol n'est pas supporte par le serveur
 }
 
-void	Response::generateResponse(Request & request)
+void	Response::generateResponse(Request & request, ServerConfig & serverBlock)
 {
 		if (request.m_error_code != 0)
-			generateErrorBody(request);
+			generateErrorBody(request, serverBlock);
 		generateHeaders(request);
 		generateStatusLine(request);
 		request.m_body_pos = 0;
@@ -198,8 +198,9 @@ void	Response::setContentType(std::string & uri)
 
 // Cas du CGI qui produira potentiellement un Body
 // This function is called when an error occured to send appropriate HTML error file
-void	Response::generateErrorBody(Request & request)
+void	Response::generateErrorBody(Request & request, ServerConfig & serverBlock)
 {
+	(void)serverBlock;
 	if (request.m_error_code != 0)// Sinon le body est deja inscrit dans la reponse OU il n'y a pas de body
 	{
 		std::ifstream file;

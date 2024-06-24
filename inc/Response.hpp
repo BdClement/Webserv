@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/17 16:02:43 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/21 13:19:11 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/24 17:55:56 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -30,10 +30,10 @@ class Response
 	void				set_error_file();
 	void				set_code_meaning();
 
-	void				generateResponse(Request & request);
+	void				generateResponse(Request & request, ServerConfig & serverBlock);
 	void				generateStatusLine(Request & request);
 	void				generateHeaders(Request & request);
-	void				generateErrorBody(Request & request);
+	void				generateErrorBody(Request & request, ServerConfig & serverBlock);// Pour gerer les error Page specifiees
 	void				setContentType(std::string & uri);
 
 	void				clear();

@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 12:55:53 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/21 18:54:48 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/24 18:50:22 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -402,7 +402,14 @@ void	Handler::acceptIncomingConnection(int const socket)
 			PRINT_RED("Failed ")<<": "<<strerror(errno)<<" ]"<<std::endl;
 		// else
 			// PRINT_GREEN("Success")<<" ]"<<std::endl;
-		// m_http_connection.insert(m_http_connection.end(), new_connection);
+		// m_http_connection.insert(m_http_connection.end(), new_connection);(ntohs(Connection.interface.sin_port))
+		if(!new_connection.setAddrPort())
+			return;
+		// struct sockaddr_in test_addr;
+		// socklen_t	test_len_addr = sizeof(test_addr);
+		// getsockname(new_connection.socket, (struct sockaddr*)&test_addr, &test_len_addr);
+		// PRINT_RED("Test du port et adresse apres accept : ")<<convertAddrBack(test_addr.sin_addr.s_addr)<<" : "<<ntohs(test_addr.sin_port)<<std::endl;
+		// PRINT_RED("Test du port et adresse apres accept : ")<<convertAddrBack(new_connection.interface.sin_addr.s_addr)<<" : "<<ntohs(new_connection.interface.sin_port)<<std::endl;
 		m_http_connection.push_back(new_connection);
 		// int count4 = 0;
 		// for (std::vector<Connection>::iterator it = m_http_connection.begin(); it != m_http_connection.end();++it)
@@ -570,6 +577,65 @@ void	Handler::epolloutEvent(struct epoll_event & events, int index)
 		handlingEpolloutEvent(m_http_connection[index]);
 }
 
+int	Handler::findServerBlock(Connection & connection)
+{
+	// Extraction des donnees de la request
+	std::string	request_host, request_port;
+	std::size_t pos = connection.request.m_headers["Host:"].find(":");
+	request_host = connection.request.m_headers["Host:"].substr(0, pos);
+	if (pos != std::string::npos)// : present dans le header Host
+		request_port = connection.request.m_headers["Host:"].substr(pos + 1);
+	// Comparaison port de connection avec port de la requete
+	std::ostringstream oss;
+	oss<<connection.port;
+	std::string	connection_port = oss.str();
+	if (!request_port.empty() && connection_port != request_port)// Check que le request_port correspond au connection_port
+	{
+		connection.request.m_error_code = 400;
+		return -1;
+	}
+	std::cout<<"TEST affichage oss "<<connection_port<<" request_host "<< request_host<<" request_port "<<request_port<<std::endl;
+	int	first_match = -1;
+	for (int i = 0; i < (int)m_config.size(); ++i)
+	{
+		// Si l'interface connection correspond a l'interface bloc server
+		if (connection.addr == m_config[i]._host && connection.port == m_config[i]._port)
+		{
+			if (first_match == -1)
+				first_match = i;
+			if (request_host == m_config[i]._serverName)
+			{
+				PRINT_GREEN("Le bloc selectionner est le bloc : ")<<i<<std::endl;
+				return i;
+			}
+		}
+	}
+	PRINT_GREEN("Le bloc selectionner est le bloc : ")<<first_match<<std::endl;
+	return first_match;
+}
+
+int	Handler::findLocationBlock(ServerConfig & serverBlock, std::string & uri)
+{
+	PRINT_RED("TEST affichage findLocationBlock uri : ")<<uri<<std::endl;
+	if (serverBlock._locations.size() == 0)
+		return -1;
+	int	loc_index = -1;
+	std::size_t longest_match = 0;
+	for (int i = 0; i < (int)serverBlock._locations.size(); ++i)
+	{
+		if (uri.find(serverBlock._locations[i]._pathLoc) == 0)
+		{
+			if (serverBlock._locations[i]._pathLoc.length() > longest_match)
+			{
+				longest_match = serverBlock._locations[i]._pathLoc.length();
+				loc_index = i;
+			}
+		}
+	}
+	PRINT_GREEN("Affichage resultat de findLocationBlock : ")<<loc_index<<std::endl;
+	return loc_index;
+}
+
 // Attention a la gestion des requetes fragmentees
 // Clean connection en cas d'erreur d'envoi de la requete
 // This Function sends the response on the socket and remove EPOLLOUT event on this socket as the reponse has been sent
@@ -577,11 +643,16 @@ void	Handler::handlingEpolloutEvent(Connection & connection)
 {
 	PRINT_GREEN("handlingEpolloutEvent called")<<std::endl;
 	// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
-	// std::cout<<"\nRequest received :\n["<<std::endl;
-	// for (std::vector<unsigned char>::iterator it = connection.request.m_read.begin(); it != connection.request.m_read.end(); ++it)// AFFICHAGE DE TEST
-	// 		std::cout<<*it;
-	// std::cout<<std::endl;
+	std::cout<<"\nRequest received :\n["<<std::endl;
+	for (std::vector<unsigned char>::iterator it = connection.request.m_read.begin(); it != connection.request.m_read.end(); ++it)// AFFICHAGE DE TEST
+			std::cout<<*it;
+	std::cout<<std::endl;
 	// std::cout<<"  Event EPOLLOUT detected on socket "<<connection.socket<<std::endl;
+	int server_index = findServerBlock(connection);
+	// (void)server_index;
+	int	location_index = findLocationBlock(m_config[server_index], connection.request.m_uri);
+	// (void)location_index;
+	connection.request.setConfig(m_config[server_index], location_index);
 	if (!connection.request.m_cgi)
 	{
 		if (connection.request.m_error_code == 0)
@@ -601,7 +672,7 @@ void	Handler::handlingEpolloutEvent(Connection & connection)
 	if (connection.request.m_cgi && connection.request.m_error_code == 0)
 		connection.response.generateStatusLine(connection.request);
 	else
-		connection.response.generateResponse(connection.request);
+		connection.response.generateResponse(connection.request, m_config[server_index]);
 	// SENDING RESPONSE
 	const unsigned char* rep = &(connection.response.m_response[0]);
 	PRINT_GREEN("Contenu de ce qui a ete envoye = ")<<std::endl;
@@ -912,11 +983,12 @@ unsigned long	convertAddr(std::string to_convert)
 // This function convert an unsigned long in std::string to recover and compare Connection's adress
 std::string convertAddrBack(unsigned long ip_addr)
 {
+	unsigned long	addr = ntohl(ip_addr);
 	unsigned char ip_bytes[4];
-	ip_bytes[0] = (ip_addr >> 24) & 0xFF;
-	ip_bytes[1] = (ip_addr >> 16) & 0xFF;
-	ip_bytes[2] = (ip_addr >> 8) & 0xFF;
-	ip_bytes[3] = ip_addr & 0xFF;
+	ip_bytes[0] = (addr >> 24) & 0xFF;
+	ip_bytes[1] = (addr >> 16) & 0xFF;
+	ip_bytes[2] = (addr >> 8) & 0xFF;
+	ip_bytes[3] = addr & 0xFF;
 	std::ostringstream oss;
 	oss << static_cast<int>(ip_bytes[0]) << "."
 		<< static_cast<int>(ip_bytes[1]) << "."

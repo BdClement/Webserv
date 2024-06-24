@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/19 19:12:53 by bmirlico          #+#    #+#             */
-/*   Updated: 2024/06/21 13:21:39 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/24 17:33:02 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -87,6 +87,9 @@ class ServerConfig
 		};
 
 	friend class Handler;
+	friend class Request;
+	// friend class Connection;
+	// friend class Response;
 };
 
 #endif

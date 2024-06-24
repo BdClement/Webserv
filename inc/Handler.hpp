@@ -40,6 +40,8 @@ class Handler
 	// PARSING CONFIG FILE
 	// void	initTestConfig(char * arg);//fonction qui joue le role du parsing
 	bool	initTestConfig(char * arg);
+	int		findServerBlock(Connection & connection);
+	int		findLocationBlock(ServerConfig & serverBlock, std::string & uri);
 
 	// SERVER INITIALISATION
 
@@ -102,6 +104,7 @@ struct clearFromHanlder{
 
 // Utils functions
 unsigned long	convertAddr(std::string to_convert);
+std::string 	convertAddrBack(unsigned long ip_addr);
 void			signalHandler(int signal_num);
 void			closeSocket(Connection objet);
 

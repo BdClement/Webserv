@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/24 18:45:29 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/19 13:06:40 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/24 11:55:21 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -27,6 +27,7 @@ class Connection
 
 	int	getSocket() const;
 	void	closeRequestCGIPipe();
+	bool	setAddrPort();
 
 	private:
 
@@ -36,6 +37,8 @@ class Connection
 	class Request			request;
 	class Response			response;
 	time_t					last_active_time;
+	std::string				addr;
+	uint16_t				port;
 
 	friend class Handler;
 	friend struct CompareSocket;

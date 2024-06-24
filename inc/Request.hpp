@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:23:59 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/21 13:17:43 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/24 18:50:33 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -68,6 +68,7 @@ class Request
 	bool			HeaderLineValid(std::string &header);
 	bool			checkContentLengthValue(std::string & value, long long &content_length);
 	// Body
+	void			setConfig(ServerConfig & serverBlock, int loc_index);
 	void			checkBody();
 	// Chunked
 	void			handleChunked();
@@ -129,6 +130,7 @@ class Request
 	bool						m_cgi;
 	std::string					m_filename;
 	PipeHandler					m_pipe;
+	std::string					m_root;
 
 	friend class Handler;
 	friend class Connection;

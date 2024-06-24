@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:29:28 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/21 18:56:28 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/24 20:31:45 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -242,6 +242,9 @@ void	Request::parseHeaders(size_t startHeaders)
 			break ;
 		initial_pos = pos + 2;
 	}
+	mapString::iterator it = m_headers.find("Host:");
+	if (it == m_headers.end())
+		m_error_code = 400;
 	// m_body_pos est ok = Si il y a un Body, il start a m_body_pos + 4 [A CHECKER]
 	// PRINT_GREEN("Resultat de fin de parsing des Headers :")<<std::endl;
 	// mapString::iterator it;
@@ -299,7 +302,6 @@ bool	Request::HeaderLineValid(std::string &header)
 bool	Request::checkContentLengthValue(std::string & value, long long &content_length)
 {
 	char *end;
-	errno = 0;
 	try
 	{
 		content_length = strtoll(value.c_str(), &end, 10);
@@ -320,6 +322,52 @@ bool	Request::checkContentLengthValue(std::string & value, long long &content_le
 		return false;
 	}
 	return true;
+}
+
+// Once the corresponding config is found, this function checks if the body and the method
+// received respect config. It prepares the uri received depending on the config
+void	Request::setConfig(ServerConfig & serverBlock, int loc_index)
+{
+	// Methodes allowed a faire !
+	if ((m_method == "GET" && !serverBlock._locations[loc_index]._methods[0]) ||
+		(m_method == "POST" && !serverBlock._locations[loc_index]._methods[1]) ||
+		(m_method == "DELETE" && !serverBlock._locations[loc_index]._methods[2]))
+	{
+		std::cout<<"La methode n'est pas autorisee"<<std::endl;
+		m_error_code = 405;
+		return;
+	}
+	std::cout<<"La methode est autorisee"<<std::endl;
+	std::cout<<"test valeur de get dans vecteur : "<<serverBlock._locations[loc_index]._methods[0]<<std::endl;
+	std::cout<<"test valeur de post dans vecteur : "<<serverBlock._locations[loc_index]._methods[1]<<std::endl;
+	std::cout<<"test valeur de delete dans vecteur : "<<serverBlock._locations[loc_index]._methods[2]<<std::endl;
+	// CHECK BODY
+	unsigned long bodySizeMax = 0;
+	if (serverBlock._clientMaxBodySize > 0)
+		bodySizeMax = serverBlock._clientMaxBodySize;
+	if (serverBlock._locations[loc_index]._clientMaxBodySizeLoc > 0)
+		bodySizeMax = serverBlock._locations[loc_index]._clientMaxBodySizeLoc;
+	if (m_read.size() - m_body_pos > bodySizeMax)
+	{
+		m_error_code = 413;
+		return ;
+	}
+	// Set chemin resolu
+	if (!serverBlock._locations[loc_index]._alias.empty())// Alias donc pas de root
+	{
+		// Remplacer les elements egaux a _pathLoc par la valeur de l'alias
+		m_uri.erase(0, serverBlock._locations[loc_index]._pathLoc.size());
+		m_uri.insert(0, serverBlock._locations[loc_index]._alias);
+		PRINT_GREEN("TEST de m_uri : ")<<m_uri<<std::endl;
+	}
+	else // Pas d'alias donc set de root
+	{
+		if (!serverBlock._locations[loc_index]._rootLoc.empty())
+			m_root = serverBlock._locations[loc_index]._rootLoc;
+		else
+			m_root = serverBlock._root;
+		PRINT_GREEN("TEST de m_root : ")<<m_root<<std::endl;
+	}
 }
 
 // This function check if the server is waiting for a Body and it has been completely read
@@ -1118,6 +1166,7 @@ void	Request::clear()
 	m_cgi = false;
 	m_filename.clear();
 	m_pipe.clear(); // Bool remis a false [Pipe a checker]
+	m_root.clear();
 	// m_pipe => normalement rien a faire puisque tout sera close et a 0a faire en fin de reponse HTTP
 }
 
@@ -1143,14 +1192,26 @@ void	Request::clear()
 //					A METTRE DANS LE ACCEPT
 
 
-//			- Dans processRequest, faire une fonction qui trouve le bloc Server correspondant
-//					Pour cela : extraire le port et l'adresse de la connexion. On indique donc dans objet Connection le port et l'adress lors de l'accept
-//					Port extrait grace a ntohs sur in_port_t sin_port de la struct sockaddr_in de l'objet Connection (ntohs(Connection.interface.sin_port))
-//					Address extraite a partir d'un unsigned int recu dans la struct in_add elle meme contenu dans la struct sockaddr_in
-//					element de l'objet connection issu du accept().
-//
-//			- Faire une fonction qui trouvera le bloc Location correspondant qui sera appele dans chaque fonction Process
 //			- Faire une focntion qui fais les check de la requete en fonction de la config trouvee (Server + Location)
 //			- Faire une fonction qui determine la variable ressource en focntion de la config (root)
 //			- Passer en argument la config correspondante pour trouver les variables necessaires en cas de besoin
 //			- Faire uen fonction listing repositories
+
+// Ce qui reste de la config :
+//	-Page d'erreur par defaut (Bloc Server)
+//	-redirection HTTP (bloc Location) A VOIR
+//	-index (bloc server et Location) => Pour toutes les methodes ??
+//	-listing repositories (bloc Location)
+
+// Ce qui est deja fait de la config :
+//	-Choisir le port et l’host de chaque "serveur".
+//	-Setup server_names ou pas.
+//	-Le premier serveur pour un host:port sera le serveur par défaut pour cet host:port
+//	 (ce qui signifie qu’il répondra à toutes les requêtes qui n’appartiennent pas à un
+//	 autre serveur).
+//	-Limiter la taille du body des clients.
+//	-Définir une liste de méthodes HTTP acceptées pour la route.
+//	-Définir un répertoire ou un fichier à partir duquel le fichier doit être recherché
+//	 (par exemple si l’url /kapouet est rootée sur /tmp/www, l’url /kapouet/pouic/toto/pouet
+//	 est /tmp/www/pouic/toto/pouet).
+//	-CGI
