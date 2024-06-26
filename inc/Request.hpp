@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:23:59 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/24 18:50:33 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/26 19:30:13 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -43,6 +43,7 @@ class Request
 			pid_t	m_pid;
 			std::string	request_method;
 			std::string	script_name;
+			std::string	path_info;
 			std::string	query_string;
 			std::string CType;
 			std::string	CLength;
@@ -77,32 +78,33 @@ class Request
 
 	// PROCESS REQUEST
 	// void			processRequest(std::vector<Config> & m_config, Response & response);
-	void			processRequest(std::vector<ServerConfig> & m_config, Response & response);
+	void			processRequest(ServerConfig & m_config, int loc_index, Response & response);
 	// Get
 	// void			processGet(Config & config, Response & response);
-	void			processGet(ServerConfig & config, Response & response);
+	void			processGet(ServerConfig & config, int loc_index, Response & response);
 	bool			checkRessourceAccessibilty(std::string const & ressource);
+	bool			processGetDirectory(Location & locationBlock, Response & response, std::string & ressource);
 	// Delete
 	// void			processDelete(Config & config, Response & response);
-	void			processDelete(ServerConfig & config, Response & response);
+	void			processDelete(ServerConfig & config, int loc_index, Response & response);
 	// Post
 	// void			processPost(Config & config, Response & response);
-	void			processPost(ServerConfig & config, Response & response);
+	void			processPost(ServerConfig & config, int loc_index, Response & response);
 	void			stockData(std::vector<unsigned char> const & body);
 	bool			checkFileUpload();// a voir si je ne retourne pas une string pour ne pas srucharger ma request
 	void			extractFilename(std::string & toExtract);
-	void			uploadFile(std::vector<unsigned char> &boundary_body);
+	void			uploadFile(std::vector<unsigned char> &boundary_body, Location & locationBlock);
 	// Multipart/form-data
-	void			processPostMultipart(std::string boundary, std::vector<unsigned char> & body);
-	void			processPostBoundaryBlock(std::vector<unsigned char> &boundary_block);
+	void			processPostMultipart(std::string boundary, std::vector<unsigned char> & body, Location & locationBlock);
+	void			processPostBoundaryBlock(std::vector<unsigned char> &boundary_block, Location & locationBlock);
 	std::string		extractBoundary(std::string & contentTypeValue);
 	void			updateHeaders(std::string &boundary_headers);
 	void			resetMultipart();
 
 	// PROCESS CGI
-	void			processCGI(ServerConfig & config);
+	void			processCGI(ServerConfig & config, int loc_index);
 	void			setEnv(char **env);
-	void			setArg(char **arg);
+	void			setArg(char **arg, std::string & interpreter);
 	bool			setPipe();
 	void			cgiChildProcess(char **env, char **arg);
 	void			cgiParentProcess(pid_t pid);
@@ -131,6 +133,7 @@ class Request
 	std::string					m_filename;
 	PipeHandler					m_pipe;
 	std::string					m_root;
+	bool						m_redirection;
 
 	friend class Handler;
 	friend class Connection;

@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/16 12:55:53 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/24 18:50:22 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/26 18:24:32 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -659,7 +659,7 @@ void	Handler::handlingEpolloutEvent(Connection & connection)
 			connection.request.checkBody();
 		// std::cout<<"[ Logique de traitement de requete ]"<<std::endl;
 		if (connection.request.m_error_code == 0)
-			connection.request.processRequest(m_config, connection.response);
+			connection.request.processRequest(m_config[server_index], location_index, connection.response);
 		if (connection.request.m_error_code == 0 && connection.request.m_cgi)
 		{
 			setPipeMonitoring(connection);
@@ -672,7 +672,7 @@ void	Handler::handlingEpolloutEvent(Connection & connection)
 	if (connection.request.m_cgi && connection.request.m_error_code == 0)
 		connection.response.generateStatusLine(connection.request);
 	else
-		connection.response.generateResponse(connection.request, m_config[server_index]);
+		connection.response.generateResponse(connection.request, m_config[server_index], location_index);
 	// SENDING RESPONSE
 	const unsigned char* rep = &(connection.response.m_response[0]);
 	PRINT_GREEN("Contenu de ce qui a ete envoye = ")<<std::endl;
@@ -686,7 +686,7 @@ void	Handler::handlingEpolloutEvent(Connection & connection)
 	rmEpollout(connection);
 	// PRINT_RED("TEST m_cgi = ")<<connection.request.m_cgi<<" on socket "<<connection.socket<<std::endl;
 	// Si !keep alive dans la requete  => close connection
-	if (!connection.request.isKeepAlive())
+	if (!connection.request.isKeepAlive() || connection.request.m_redirection)
 		closeAndRmConnection(connection);
 	else // A conditionner avec requetes fragmentees
 	{

@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/19 23:26:05 by bmirlico          #+#    #+#             */
-/*   Updated: 2024/06/24 17:33:31 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/26 17:34:27 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -83,7 +83,7 @@ class Location
 		friend class Handler;
 		friend class Request;
 		// friend class Connection;
-		// friend class Response;
+		friend class Response;
 };
 
 #endif

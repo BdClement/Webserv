@@ -58,7 +58,7 @@ UPLOAD DE FICHIER SIMPLE
 
 
 TEST MULTIPART/FORM-DATA
-	Test valide avec le fichier html	
+	Test valide avec le fichier html
 		curl -v -X POST http://localhost:8080/upload  -F "file1=@test/error/Small.png" -F "file2=@test/error/Moyenne.jpeg" -F "field3=Donnee a stocker"
 
 	Test invalide:

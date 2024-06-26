@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/17 16:05:07 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/24 18:41:11 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/26 18:20:33 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -63,7 +63,7 @@ void	Response::set_code_meaning()
 	m_code_meaning[200] = "OK";// Requete reussi
 	m_code_meaning[201] = "Created";//Ressource cree avec succes (POST)
 	m_code_meaning[204] = "No Content";//Requete reussi mais pas de contenua retourne (Delete ?)
-	m_code_meaning[301] = "Movec Permanently";//La ressource demandée a été déplacée de façon permanente à une nouvelle URL
+	m_code_meaning[301] = "Moved Permanently";//La ressource demandée a été déplacée de façon permanente à une nouvelle URL
 	m_code_meaning[302] = "Found";// La ressource demandée réside temporairement sous une URL différente.
 	m_code_meaning[304] = "Not Modified";//304 Not Modified : La ressource n'a pas été modifiée depuis la dernière requête ??
 	m_code_meaning[400] = "Bad Request";//La requête est mal formulée
@@ -81,13 +81,40 @@ void	Response::set_code_meaning()
 	m_code_meaning[505] = "HTTP Version Not Supported";// Le protocol n'est pas supporte par le serveur
 }
 
-void	Response::generateResponse(Request & request, ServerConfig & serverBlock)
+void Response::findErrorPage(ServerConfig & serverBlock, int error_code, std::string & root)
 {
-		if (request.m_error_code != 0)
-			generateErrorBody(request, serverBlock);
-		generateHeaders(request);
-		generateStatusLine(request);
-		request.m_body_pos = 0;
+	std::map<int, std::string>::iterator it = serverBlock._errorPages.find(error_code);
+	if (it != serverBlock._errorPages.end())
+		m_error_page = root + "/" + it->second;
+	std::cout<<"TEST de m_error_page dans findErrorPage : "<<m_error_page<<std::endl;
+}
+
+void	Response::generateRedirectionResponse(Request & request, Location & locationBlock)
+{
+	request.m_redirection = true;
+	int response = std::atoi(locationBlock._return[0].c_str());
+	request.m_response_code = response;
+	std::string header = "Location: " + locationBlock._return[1] + "\r\n";
+	// generateHeaders(request);
+	m_response.insert(m_response.begin(), header.begin(), header.end());
+	generateStatusLine(request);
+}
+
+void	Response::generateResponse(Request & request, ServerConfig & serverBlock, int loc_index)
+{
+	if (serverBlock._locations[loc_index]._return.size() != 0)
+	{
+		generateRedirectionResponse(request, serverBlock._locations[loc_index]);
+		return ;
+	}
+	if (request.m_error_code != 0)
+	{
+		findErrorPage(serverBlock, request.m_error_code, request.m_root);
+		generateErrorBody(request);
+	}
+	generateHeaders(request);
+	generateStatusLine(request);
+	request.m_body_pos = 0;
 }
 
 // This function generate Response's Status Line
@@ -172,10 +199,12 @@ void	Response::generateHeaders(Request & request)
 // It is called when Content-Type hasn't been set already (Error found or Content predefined)
 void	Response::setContentType(std::string & uri)
 {
+	std::cout<<"TEST de setContentType uri : "<<uri<<std::endl;
 	size_t	point = uri.find_last_of('.');
 	if (point != std::string::npos)
 	{
 		std::string extension = uri.substr(point + 1);
+		std::cout<<"TEST de setContentType : uri / extension : "<<uri<<" "<<extension<<std::endl;
 		if (extension == "html")
 			m_content_type = "Content-Type: text/html\r\n";
 		else if (extension == "jpeg" || extension == "jpg")
@@ -198,19 +227,30 @@ void	Response::setContentType(std::string & uri)
 
 // Cas du CGI qui produira potentiellement un Body
 // This function is called when an error occured to send appropriate HTML error file
-void	Response::generateErrorBody(Request & request, ServerConfig & serverBlock)
+void	Response::generateErrorBody(Request & request)
 {
-	(void)serverBlock;
 	if (request.m_error_code != 0)// Sinon le body est deja inscrit dans la reponse OU il n'y a pas de body
 	{
 		std::ifstream file;
-		mapIntString::iterator it = m_error_file.find(request.m_error_code);
-		if (it == m_error_file.end())// Recherche du fichier d'erreur associe a ce code
+		if (!m_error_page.empty())
 		{
-			PRINT_RED("Unknown error code : ")<<request.m_error_code<<std::endl;
-			return ;
+				file.open(m_error_page.c_str());
+			if (!file)
+			{
+				m_error_page.clear();
+				generateErrorBody(request);
+			}
 		}
-		file.open(it->second.c_str());// Ouverture du fichier d'erreur trouvee
+		else
+		{
+			mapIntString::iterator it = m_error_file.find(request.m_error_code);
+			if (it == m_error_file.end())// Recherche du fichier d'erreur associe a ce code
+			{
+				PRINT_RED("Unknown error code : ")<<request.m_error_code<<std::endl;
+				return ;
+			}
+			file.open(it->second.c_str());// Ouverture du fichier d'erreur trouvee
+		}
 		if (!file)
 		{
 			PRINT_RED("Probleme fichier d'erreur : ")<<strerror(errno)<<std::endl;// errno a supprimer ??!
@@ -235,4 +275,5 @@ void	Response::clear()
 	m_response.clear();
 	m_body_size = 0;
 	m_content_type.clear();
+	m_error_page.clear();
 }

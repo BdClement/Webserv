@@ -6,14 +6,14 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:29:28 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/24 20:31:45 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/26 19:55:13 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Request.hpp"
 #include "Handler.hpp"
 
-Request::Request() : m_ready(false), m_chunked(false), m_end_of_chunked(false), m_uriIsADirectory(false), m_body_pos(0), m_error_code(0), m_response_code(0), m_headers(), m_cgi(false)
+Request::Request() : m_ready(false), m_chunked(false), m_end_of_chunked(false), m_uriIsADirectory(false), m_body_pos(0), m_error_code(0), m_response_code(0), m_headers(), m_cgi(false), m_redirection(false)
 {
 	// std::cout<<"Request constructor called"<<std::endl;
 }
@@ -37,6 +37,7 @@ Request::Request(Request const& asign)
 	m_cgi = asign.m_cgi;
 	m_filename = asign.m_filename;
 	m_pipe = asign.m_pipe;
+	m_redirection = asign.m_redirection;
 	// std::cout<<"Request copy constructor called"<<std::endl;
 }
 
@@ -68,6 +69,7 @@ Request& Request::operator=(Request const & equal)
 		m_cgi = equal.m_cgi;
 		m_filename = equal.m_filename;
 		m_pipe = equal.m_pipe;
+		m_redirection = equal.m_redirection;
 		// PB ICI impossible de transmettre pipe donc soit erreur soit broken pipe car je ne close pas les pipe avec clear()
 		// m_pipe.pipe_stdin[0] = equal.m_pipe.pipe_stdin[0];
 		// m_pipe.pipe_stdin[1] = equal.m_pipe.pipe_stdin[1];
@@ -363,9 +365,15 @@ void	Request::setConfig(ServerConfig & serverBlock, int loc_index)
 	else // Pas d'alias donc set de root
 	{
 		if (!serverBlock._locations[loc_index]._rootLoc.empty())
+		{
+			std::cout<<"rentre dans le if"<<std::endl;
 			m_root = serverBlock._locations[loc_index]._rootLoc;
+		}
 		else
+		{
+			std::cout<<"rentre dans le else"<<std::endl;
 			m_root = serverBlock._root;
+		}
 		PRINT_GREEN("TEST de m_root : ")<<m_root<<std::endl;
 	}
 }
@@ -528,34 +536,67 @@ int	Request::hexaToInt(std::string const & toConvert)
  *                                                                                                         *
  ***********************************************************************************************************/
 
-void	Request::processRequest(std::vector<ServerConfig> & m_config, Response & response)
+void	Request::processRequest(ServerConfig & m_config, int loc_index,  Response & response)
 {
 	// FIND VIRTUAL SERVER !
 	PRINT_GREEN("processRequest called")<<std::endl;
 	// std::cout<<"TEST fin de uri => "<<m_uri[m_uri.size() - 3]<<m_uri[m_uri.size() - 2]<<m_uri[m_uri.size() - 1]<<std::endl;
-	if (m_uri[m_uri.size() - 3] == '.' && m_uri[m_uri.size() - 2] == 'p' && m_uri[m_uri.size() - 1] == 'y')
-		processCGI(m_config[0]);
+	// if (m_uri[m_uri.size() - 3] == '.' && m_uri[m_uri.size() - 2] == 'p' && m_uri[m_uri.size() - 1] == 'y')
+	if (!m_config._locations[loc_index]._cgiInterpreter.empty())
+		processCGI(m_config, loc_index);
 	else if (m_method == "GET")
-		processGet(m_config[0], response);
+		processGet(m_config, loc_index, response);
 	else if (m_method == "POST")
-		processPost(m_config[0], response);
+		processPost(m_config, loc_index, response);
 	else if (m_method == "DELETE")
-		processDelete(m_config[0], response);
+		processDelete(m_config, loc_index, response);
+}
+
+bool	Request::processGetDirectory(Location & locationBlock, Response & response, std::string & ressource)
+{
+	(void)response;
+	if (locationBlock._autoIndexLoc)//AutoIndex
+	{
+		PRINT_RED("AutoIndex a faire [ BASTIEN ]")<<std::endl;
+		return false;
+	}
+	else if (!locationBlock._indexLoc.empty())//Index
+	{
+		ressource = m_root + "/" + locationBlock._indexLoc;
+		m_uri = ressource;
+		PRINT_RED("TEST de ressource en cas d'index : ")<<ressource<<std::endl;
+		return true;
+	}
+	m_error_code = 405;
+	return false;
 }
 
 // Attention Header Accept contenu ce qui est envoye ou renvoyer ??
 // This function process a GET Request. If an error occured,it specifies it and stops
 // If not,the ressource asked is placed in the Response object
-void	Request::processGet(ServerConfig & config, Response & response)
+void	Request::processGet(ServerConfig & config, int  loc_index, Response & response)
 {
-	// FIND LOCATION
-	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
-	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
 	(void)config;
+	(void)loc_index;
 	PRINT_GREEN("processGet Called")<<std::endl;
-	std::string ressource = "test" + m_uri; // Attention au cas ou ressource est un Directory
-	if (!checkRessourceAccessibilty(ressource))
+	// PRNT_RED("TEST du _return :")<<std::endl;
+	// for ()
+	if (config._locations[loc_index]._return.size() != 0)
+	{
+		// redirection
 		return ;
+	}
+	std::string ressource = m_root + m_uri; // Attention au cas ou ressource est un Directory
+	if (!checkRessourceAccessibilty(ressource))
+	{
+		if (m_uriIsADirectory)
+		{
+			if (!processGetDirectory(config._locations[loc_index], response, ressource))
+				return ;
+		}
+		else
+			return ;
+	}
 	// PRINT_RED("Probleme avec la resource demande : ")<<ressource<<" "<<strerror(errno)<<std::endl;// A suuprimer
 	std::ifstream file(ressource.c_str(), std::ios::binary);
 	if (!file)
@@ -591,11 +632,9 @@ bool	Request::checkRessourceAccessibilty(std::string const & ressource)
 	if (s.st_mode & S_IFDIR)// A gerer avec la Config (Pour GET notamment)
 	{
 		PRINT_RED("Ressource is a directory")<<std::endl;
-		// Pour DELTETE en cas de directory , check si la methode est GET pour agir differemment (+POST par la suite)
-		m_error_code = 405;// Pas autorise par DELETE. Check potentiellement 403 ?
-		// IF GET et PAS d'index specifie Et pas autoindex active => 403 Forbidden
-		// La difference est que GET est autorise sur un directory mais depend de la config
-		// Alors que
+		m_uriIsADirectory = true;
+		if (m_method == "DELETE")
+			m_error_code = 405;
 		return false;
 	}
 	// PERMISSION
@@ -622,14 +661,15 @@ bool	Request::checkRessourceAccessibilty(std::string const & ressource)
 
 // This function process a Delete request. It checks ressource's accesibility and if the ressource
 // can be deleted it does it, otherwise it prepares error_code to send error_file
-void	Request::processDelete(ServerConfig & config, Response & response)
+void	Request::processDelete(ServerConfig & config, int loc_index, Response & response)
 {
 	(void)config;
+	(void)loc_index;
 	// FIND LOCATION
 	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
 	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
 	PRINT_GREEN("processDelete Called")<<std::endl;
-	std::string ressource = "test" + m_uri;
+	std::string ressource = m_root + m_uri;
 	if (!checkRessourceAccessibilty(ressource))
 		return ;
 	else// FILE
@@ -655,11 +695,8 @@ void	Request::processDelete(ServerConfig & config, Response & response)
 
 // En cas de succes Message sous forme de text en tant que Body
 // "Data received and processed successfully."|| "File uploaded successfully."
-void	Request::processPost(ServerConfig & config, Response & response)
+void	Request::processPost(ServerConfig & config, int loc_index, Response & response)
 {
-	// FIND LOCATION
-	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
-	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
 	(void)config;
 	(void)response;
 	// PRINT_GREEN("BODY RECEIVED SIZE : ")<<std::distance(m_read.begin() + m_body_pos, m_read.end())<<std::endl;
@@ -672,9 +709,9 @@ void	Request::processPost(ServerConfig & config, Response & response)
 	std::vector<unsigned char>	request_body(m_read.begin() + m_body_pos, m_read.end());
 	mapString::iterator it = m_headers.find("Content-Type:");
 	if (it != m_headers.end() && (it->second.find("multipart/form-data") != std::string::npos))
-		processPostMultipart(extractBoundary(it->second), request_body);
+		processPostMultipart(extractBoundary(it->second), request_body, config._locations[loc_index]);
 	else if (checkFileUpload()) // Televersement Simple A CHECKER !!!!!
-		uploadFile(request_body);
+		uploadFile(request_body, config._locations[loc_index]);
 	else
 		stockData(request_body);
 	if (m_error_code == 0 && m_response_code == 201)// Cas multipart successfull
@@ -751,11 +788,15 @@ void	Request::extractFilename(std::string & toExtract)
 
 // This function check if the ressource webserv has to create exists and create it
 // It fills it with body received in argument
-void	Request::uploadFile(std::vector<unsigned char> &boundary_body)
+void	Request::uploadFile(std::vector<unsigned char> &boundary_body, Location & locationBlock)
 {
 	if (boundary_body.size() == 0 || m_filename.size() == 0)
 		return ;
-	std::string location = "test/upload/" + m_filename;
+	std::string location;
+	if (!locationBlock._uploadLoc.empty())
+		location = m_root + "/" + locationBlock._uploadLoc + m_filename;
+	else
+		location = "test/upload/" + m_filename;
 	if	(checkRessourceAccessibilty(location))
 	{
 		m_error_code = 409;//Confilct exsite deja !
@@ -766,6 +807,7 @@ void	Request::uploadFile(std::vector<unsigned char> &boundary_body)
 		std::ofstream file(location.c_str(), std::ios::binary);
 		if (!file)
 		{
+			PRINT_GREEN("TEST location = ")<<location<<std::endl;
 			PRINT_RED("Error : Imposible to open Webserv Data Base.")<<std::endl;
 			m_error_code = 500;
 			return ;
@@ -784,7 +826,7 @@ void	Request::uploadFile(std::vector<unsigned char> &boundary_body)
 
 // This function is the main loop for processing each block of a multipart/form-data request
 // It splits each block and sends it to processPostBoundaryBlock()
-void	Request::processPostMultipart(std::string boundary, std::vector<unsigned char> & body)
+void	Request::processPostMultipart(std::string boundary, std::vector<unsigned char> & body, Location & locationBlock)
 {
 	if (boundary.size() == 0)
 	{
@@ -812,7 +854,7 @@ void	Request::processPostMultipart(std::string boundary, std::vector<unsigned ch
 		// 	std::cout<<*test;
 		// TRAITEMENT DU BLOCK
 		std::vector<unsigned char> boundary_block(it, next);
-		processPostBoundaryBlock(boundary_block);
+		processPostBoundaryBlock(boundary_block, locationBlock);
 		// EFFACE LE BLOCK DEJA TRAITE
 		body.erase(body.begin(), next);// On efface le block qui a ete traite
 		// if (it == std::search(body.begin(), body.end(), end_boundary.begin(), end_boundary.end()))// a remettre dans le while ??????!!!
@@ -832,7 +874,7 @@ void	Request::processPostMultipart(std::string boundary, std::vector<unsigned ch
 //		Tout le mond echoue : 400 Prioritaire si il yen a un sinon
 // This function recveive a multipart/form-data block, strores new headers from it thanks to updateHeaders()
 // Depending on new headers result, it process the request by storing data or upload file
-void	Request::processPostBoundaryBlock(std::vector<unsigned char> &boundary_block)
+void	Request::processPostBoundaryBlock(std::vector<unsigned char> &boundary_block, Location & locationBlock)
 {
 	// PRINT
 	// PRINT_GREEN("Traitement du block boundary")<<std::endl;
@@ -865,7 +907,7 @@ void	Request::processPostBoundaryBlock(std::vector<unsigned char> &boundary_bloc
 	if (checkFileUpload())
 	{
 		// PRINT_RED("UPLOAD MULTIPART")<<std::endl;
-		uploadFile(boundary_body);//Reset multi part a inserer ici je pense
+		uploadFile(boundary_body, locationBlock);//Reset multi part a inserer ici je pense
 		resetMultipart();
 	}
 	else
@@ -922,31 +964,41 @@ void	Request::setEnv(char **env)
 	m_pipe.request_method = "REQUEST_METHOD=" + m_method;
 	env[0] = &m_pipe.request_method[0];
 	// trouver le script name dans uri => le reste = PATH_INFO
-	m_pipe.script_name = "SCRIPT_NAME=test" + m_uri;
+	m_pipe.script_name = "SCRIPT_NAME=";
+	m_pipe.path_info = "PATH_INFO=";
+	std::size_t script_end = m_uri.find(".py");
+	if (script_end != std::string::npos)
+	{
+		m_pipe.script_name.insert(m_pipe.script_name.end(), m_uri.begin(), m_uri.begin() + script_end + 3);
+		m_pipe.path_info.insert(m_pipe.path_info.end(), m_uri.begin() + script_end + 3, m_uri.end());
+		PRINT_GREEN("TEST script name et path info : ")<<m_pipe.script_name<<"  "<<m_pipe.path_info<<std::endl;
+	}
 	env[1] = &m_pipe.script_name[0];
+	env[2] = &m_pipe.path_info[0];
 	m_pipe.query_string = "QUERY_STRING=";
 	if (!m_query.empty())
 		m_pipe.query_string += m_query;
-	env[2] = &m_pipe.query_string[0];
+	env[3] = &m_pipe.query_string[0];
 	mapString::iterator contentType = m_headers.find("Content-Type:");
 	if (contentType != m_headers.end())
 		m_pipe.CType = "CONTENT_TYPE=" + contentType->second;
-	env[3] = &m_pipe.CType[0];
+	env[4] = &m_pipe.CType[0];
 	mapString::iterator contentLength = m_headers.find("Content-Length:");
 	if (contentLength != m_headers.end())
 		m_pipe.CLength = "CONTENT_LENGTH=" + contentLength->second;
 	// std::cout<<"TEST : "<<CLength<<std::endl;
-	env[4] = &m_pipe.CLength[0];
+	env[5] = &m_pipe.CLength[0];
 	m_pipe.server = "SERVER_PROTOCOL=HTTP/1.1";
-	env[5] = &m_pipe.server[0];
-	env[6] = NULL;
+	env[6] = &m_pipe.server[0];
+	env[7] = NULL;
 }
 
 // A MODIFIER avec Config
-void	Request::setArg(char **arg)
+void	Request::setArg(char **arg, std::string & interpreter)
 {
-	m_pipe.ressource = "test" + m_uri;
-	m_pipe.bin ="/usr/bin/python";
+	m_pipe.ressource = m_root + m_uri;
+	m_pipe.bin = interpreter;// cgInterpreter
+	PRINT_GREEN("TEST de arg ressource et interpreter = ")<<m_pipe.ressource<<"  "<<m_pipe.bin<<std::endl;
 	arg[0] = &m_pipe.ressource[0];
 	arg[1] = &m_pipe.bin[0];
 	arg[2] = NULL;
@@ -1080,7 +1132,7 @@ void	Request::cgiParentProcess(pid_t pid)
 	// std::cout<<"pipe_stdin[] == "<<m_pipe.pipe_stdin[1]<<" pipe_stdout[0] == "<<m_pipe.pipe_stdout[0]<<std::endl;
 }
 
-void	Request::processCGI(ServerConfig & config)
+void	Request::processCGI(ServerConfig & config, int loc_index)
 {
 	// FIND LOCATION
 	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
@@ -1097,10 +1149,10 @@ void	Request::processCGI(ServerConfig & config)
 	}
 	// SET ENV / SET ARG
 	// PRINT_GREEN("set Env")<<std::endl;
-	char *env[7];
+	char *env[8];
 	setEnv(env);
 	char *arg[3];
-	setArg(arg);
+	setArg(arg, config._locations[loc_index]._cgiInterpreter);
 	// CREATION DE PIPE
 	if (!setPipe())
 		return ;
@@ -1167,6 +1219,7 @@ void	Request::clear()
 	m_filename.clear();
 	m_pipe.clear(); // Bool remis a false [Pipe a checker]
 	m_root.clear();
+	m_redirection = false;
 	// m_pipe => normalement rien a faire puisque tout sera close et a 0a faire en fin de reponse HTTP
 }
 
@@ -1198,12 +1251,13 @@ void	Request::clear()
 //			- Faire uen fonction listing repositories
 
 // Ce qui reste de la config :
-//	-Page d'erreur par defaut (Bloc Server)
-//	-redirection HTTP (bloc Location) A VOIR
-//	-index (bloc server et Location) => Pour toutes les methodes ??
-//	-listing repositories (bloc Location)
+//	-listing repositories (bloc Location) Bastien => a inserer a l'endroit prevu
 
 // Ce qui est deja fait de la config :
+//	-upload location
+//	-redirection HTTP (bloc Location) A VOIR
+//	-Page d'erreur par defaut (Bloc Server)
+//	-index (bloc server et Location) => Pour toutes les methodes ?? Only GET
 //	-Choisir le port et l’host de chaque "serveur".
 //	-Setup server_names ou pas.
 //	-Le premier serveur pour un host:port sera le serveur par défaut pour cet host:port

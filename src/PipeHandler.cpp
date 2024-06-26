@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/06/12 12:24:25 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/19 13:14:27 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/26 11:47:26 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -79,6 +79,7 @@ void	Request::PipeHandler::clear()
 	m_pid = 0;
 	request_method.clear();
 	script_name.clear();
+	path_info.clear();
 	query_string.clear();
 	CType.clear();
 	CLength.clear();

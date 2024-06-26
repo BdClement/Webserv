@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/17 16:02:43 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/24 17:55:56 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/26 17:25:36 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -30,10 +30,12 @@ class Response
 	void				set_error_file();
 	void				set_code_meaning();
 
-	void				generateResponse(Request & request, ServerConfig & serverBlock);
+	void				generateResponse(Request & request, ServerConfig & serverBlock, int loc_index);
+	void				generateRedirectionResponse(Request & request, Location & locationBlock);
 	void				generateStatusLine(Request & request);
 	void				generateHeaders(Request & request);
-	void				generateErrorBody(Request & request, ServerConfig & serverBlock);// Pour gerer les error Page specifiees
+	void				generateErrorBody(Request & request);// Pour gerer les error Page specifiees
+	void				findErrorPage(ServerConfig & serverBlock, int error_code, std::string & root);
 	void				setContentType(std::string & uri);
 
 	void				clear();
@@ -45,8 +47,10 @@ class Response
 	mapIntString				m_code_meaning;
 	unsigned int				m_body_size;
 	std::string					m_content_type;
+	std::string					m_error_page;
 
 	friend class Handler;
 	// friend class Connection;
 	friend class Request;
+
 };
