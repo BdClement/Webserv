@@ -1,66 +1,160 @@
-TEST DE CHUNKED REQUEST
+intsallation de siege
+	rm -rf $HOME/.brew && git clone --depth=1 https://github.com/Homebrew/brew $HOME/.brew && echo 'export PATH=$HOME/.brew/bin:$PATH' >> $HOME/.zshrc && source $HOME/.zshrc && brew update
+	brew install siege
 
-	Test valide :
-		Stockage de donnee simple
-			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+TEST SIEGE
+	siege -c 100 -t 1M http://localhost:8080/test/Empty.txt (100 clients concurrents pendant 1 min a faire SANS VALGRIND qui ralentit l'execution)
 
-		Upload de fichier
-			curl -X POST http://localhost:8080/upload --header "Transfer-Encoding: chunked" --header "Content-Disposition: attachment; filename=\"SimplePageBis.html\"" --data-binary "@test/SimplePage.html"
-			curl -X POST http://localhost:8080/upload --header "Transfer-Encoding: chunked" --header "Content-Disposition: attachment; filename=\"test.png\"" --data-binary "@test/error/Image.png"
+TEST VALGRIND
+	valgrind --leak-check=full --show-leak-kinds=all --track-fds=yes --track-origins=yes ./webserv racine/conf/test.conf
 
-		Upload de fichier avec Multipart + Chunked Request
-			curl -X POST http://localhost:8080/upload -H "Transfer-Encoding: chunked" -F "file=@test/SimplePage.html"
+TEST CONFIG
+	Error_page valide
+		http://localhost:8080/ExistePas (avec test.conf et GET non autorise)
+	Error page invalide
+		http://localhost:8080/ExistePas (avec test.conf et GET non autorise en mettant une error page qui n'existe pas)
 
-	Test invalide :
-		Size invalide
-			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nH\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
-		Size Negative
-			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n-C\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
-		Overflow INT 85F5E0FF 80000000 = 2147483648 (INT_MAX + 1)
-			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n80000000\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
-		Pas d'hexadecimal
-			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
-		Elements presents apres le chunk de fin
-			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne\r\n0\r\n\r\nCen'estpasFini" | nc localhost 8080
-		Taille incorrecte inferieure
-			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nB\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
-		Taille incorrecte superieure
-			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nD\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
-		Mauvais Format pas de CRLF a la fin du content
-			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne0\r\n\r\n" | nc localhost 8080
-		Mauvais format chunk 0 sans CRLF
-			echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne\r\n0" | nc localhost 8080
+	client_max_body / Allow Methods
+		curl -v -X POST http://localhost:8080/upload -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @racine/images/Image.png
+			Cumule avec requete NotAllowed avec http://localhost:8080/test/LargeFile.txt et GET non autorise
 
+	Index / AutoIndex
+		http://localhost:8080/ (modifiant index server et Location)
 
-TEST STCOKAGE DE DONNEE SIMPLE
+	Return
+		http://localhost:8080/error/SimplePage.html
+			Cumule avec Get not NotAllowed
 
-	Test valide :
-		curl -v -X POST http://localhost:8080/upload -H "Content-Type: appliacation/json" -d '{"key1":"value1", "key2":"value2"}'
+	Alias
+		http://localhost:8080/  / => remplacer par path to SimplePage
 
-	Test invalide :
-		size incorrecte
-			curl -v -X POST http://localhost:8080/upload -H "Content-Length: 100" -H "Content-Type: appliacation/json" -d '{"key1":"value1", "key2":"value2"}'
-		Pas de contenu
-			curl -v -X POST http://localhost:8080/upload -H "Content-Length: 100" -H "Content-Type: appliacation/json"
+	Upload
+		curl -v -X POST http://localhost:8080/upload -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @racine/images/Image.png
+		Cumule avec return / A faire 2 fois pour Conflict
 
-UPLOAD DE FICHIER SIMPLE
-	Test valide :
-		curl -v -X POST http://localhost:8080/upload -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @test/error/Image.png
-		curl -v -X POST http://localhost:8080/upload -H "Content-Type: application/octet-stream" -H "Content-Length: 612724" -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @test/error/Image.png
+	Priorite de return sur client_max_body
+		curl -v -X POST http://localhost:8080/upload -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @racine/images/Image.png
+			A faire avec un client_max_body et return
 
-	Test invalide :
-		Taille superieure
-		curl -v -X POST http://localhost:8080/upload -H "Content-Length: 612725" -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @test/error/Image.png
-		Taille inferieure
-		curl -v -X POST http://localhost:8080/upload -H "Content-Length: 612723" -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @test/error/Image.png
-		Contenu manquant
-		curl -v -X POST http://localhost:8080/upload -H "Content-Length: 612725" -H "Content-Disposition: filename=\"test.jpeg\""
+TEST DELETE
+	Test valide afficher FrontDelete.html et cliquer Code de retour 204 No Content
+	Test non valide refaire code retour 404 notFound
+	Test non valide delete sans permissions
+		curl -v -X DELETE http://localhost:8080/test/PasDePermission.html
+	Test non valide DELETE sur un directory
+		curl -v -X DELETE http://localhost:8080/test
+	En cas d'erreur interne => 500
+	Test avec redirection qui a la priorite
+		curl -v -X DELETE http://localhost:8080/test/FileToDelete.txt
+	Test avec body superieur a la config
+		curl -v -X DELETE http://localhost:8080/test/FileToDelete.txt -d "Deleting this file."
 
 
-TEST MULTIPART/FORM-DATA
-	Test valide avec le fichier html
-		curl -v -X POST http://localhost:8080/upload  -F "file1=@test/error/Small.png" -F "file2=@test/error/Moyenne.jpeg" -F "field3=Donnee a stocker"
+TEST GET
+	Test valide http://localhost:8080/test/SimplePage.html
+	Test non valide sans permissions http://localhost:8080/test/PasDePermission.html
+	Test non valide existe pas http://localhost:8080/test/existePas
+	Test non valide directory http://localhost:8080/test
+	Test non valide avec redirection http://localhost:8080/test
+	Test non valide avec body > client_max_body pour GET
+		curl -v -X GET http://localhost:8080/test/SimplePage.html -d "Body test."
+	Test non valide avec uri too long => 414
+		echo -e "GET /longuri"$(printf '=%.0s' {1..2050})" HTTP/1.1\r\nHost: localhost:8080\r\n\r\n" | nc localhost 8080
+	Test non valide avec un headerTooLarge => 431
+		echo -e "GET / HTTP/1.1\r\nHost: localhost:8080\r\nUser-Agent: curl/7.68.0\r\nCustom-Header: $(printf 'A%.0s' {1..8192})\r\n\r\n" | nc localhost 8080
+	Test non valide uriTooLong + HeaderTooLarge => 414
+		echo -e "GET /$(printf 'B%.0s' {1..2049}) HTTP/1.1\r\nHost: localhost:8080\r\nUser-Agent: curl/7.68.0\r\nCustom-Header: $(printf 'A%.0s' {1..8192})\r\n\r\n" | nc localhost 8080
+	Test non valide mauvais protocole => 505
+		echo -e "GET / HTTP/2.0\r\nHost: localhost\r\n\r\n" | nc localhost 8080
 
-	Test invalide:
-		Upload trop large
-			curl -v -X POST http://localhost:8080/upload -F "file1=@test/LargeFile.txt;type=application/invalid-mime"
+
+TEST POST
+	TEST DE CHUNKED REQUEST
+
+		Test valide :
+			Stockage de donnee simple
+				echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+
+			Upload de fichier
+				curl -v -X POST http://localhost:8080/upload --header "Transfer-Encoding: chunked" --header "Content-Disposition: attachment; filename=\"SimplePageBis.html\"" --data-binary "@racine/test/SimplePage.html"
+				curl -v -X POST http://localhost:8080/upload --header "Transfer-Encoding: chunked" --header "Content-Disposition: attachment; filename=\"test.png\"" --data-binary "@racine/images/Image.png"
+
+			Upload de fichier avec Multipart + Chunked Request
+				curl -v -X POST http://localhost:8080/upload -H "Transfer-Encoding: chunked" -F "file=@racine/test/SimplePage.html"
+
+		Test invalide :
+			Size invalide
+				echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nH\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+			Size Negative
+				echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n-C\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+			Overflow INT 85F5E0FF 80000000 = 2147483648 (INT_MAX + 1)
+				echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n80000000\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+			Pas d'hexadecimal
+				echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+			Elements presents apres le chunk de fin
+				echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne\r\n0\r\n\r\nCen'estpasFini" | nc localhost 8080
+			Taille incorrecte inferieure
+				echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nB\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+			Taille incorrecte superieure
+				echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nD\r\nCaFonctionne\r\n0\r\n\r\n" | nc localhost 8080
+			Mauvais Format pas de CRLF a la fin du content
+				echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne0\r\n\r\n" | nc localhost 8080
+			Mauvais format chunk 0 sans CRLF
+				echo -ne "POST /store HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\nC\r\nCaFonctionne\r\n0" | nc localhost 8080
+
+
+	TEST STCOKAGE DE DONNEE SIMPLE
+
+		Test valide :
+			curl -v -X POST http://localhost:8080/upload -H "Content-Type: appliacation/json" -d '{"key1":"value1", "key2":"value2"}'
+
+		Test invalide :
+			size incorrecte
+				curl -v -X POST http://localhost:8080/upload -H "Content-Length: 100" -H "Content-Type: appliacation/json" -d '{"key1":"value1", "key2":"value2"}'
+			Pas de contenu
+				curl -v -X POST http://localhost:8080/upload -H "Content-Length: 100" -H "Content-Type: appliacation/json"
+			Pas de size => 411 Length Required
+				echo -e "POST /test HTTP/1.1\r\nHost: localhost:8080\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\ndata" | nc localhost 8080
+
+	UPLOAD DE FICHIER SIMPLE
+		Test valide :
+			curl -v -X POST http://localhost:8080/upload -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @racine/images/Image.png
+			curl -v -X POST http://localhost:8080/upload -H "Content-Type: application/octet-stream" -H "Content-Length: 612724" -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @racine/images/Image.png
+
+		Test invalide :
+			Taille superieure
+			curl -v -X POST http://localhost:8080/upload -H "Content-Length: 612725" -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @racine/images/Image.png
+			Taille inferieure
+			curl -v -X POST http://localhost:8080/upload -H "Content-Length: 612723" -H "Content-Disposition: filename=\"test.jpeg\"" --data-binary @racine/images/Image.png
+			Contenu manquant
+			curl -v -X POST http://localhost:8080/upload -H "Content-Length: 612725" -H "Content-Disposition: filename=\"test.jpeg\""
+
+
+	TEST MULTIPART/FORM-DATA
+		Test valide avec le fichier html
+			curl -v -X POST http://localhost:8080/upload  -F "file1=@racine/images/Small.png" -F "file2=@racine/images/Moyenne.jpeg" -F "field3=Donnee a stocker"
+			curl -v -X POST http://localhost:8080/upload -F "file1=@racine/test/MediumFile.txt;type=application/invalid-mime"
+
+		Test invalide:
+			Upload trop large (superieur a 1MegaOtet par defaut dans notre server ET MAX_BODY_LENGTH set a 2 000 000 par la config)
+				curl -v -X POST http://localhost:8080/upload -F "file1=@racine/test/LargeFile.txt;type=application/invalid-mime"
+
+
+TEST CGI [A ne pas tester avec --trace-children=yes probleme environmment avec Valrgind]
+	Test valide
+	GET avec http://localhost:8080/cgi-bin/script.py
+	POST
+		curl -v -X POST http://localhost:8080/cgi-bin/script.py -d "Ceci est de la donnee envoyee au script CGI poour tester"
+		curl -v -X POST http://localhost:8080/cgi-bin/script.py -d "@racine/test/MediumFile.txt" a tester sans valgrind
+
+	Test de boucle infinie CGI
+		localhost:8080/cgi-bin/loop.py tester une requete a cote pour voir que le serveur reste disponible
+
+	Test d'acces au chemin relatif
+		http://localhost:8080/cgi-bin/path.py/pathTest/test.txt
+
+	Test CGi avec donnes plus imporantes transmises
+		curl -v -X POST http://localhost:8080/cgi-bin/script.py -d "@racine/test/MediumFile.txt"
+TEST DELETE
+		curl -v -X DELETE http://localhost:8080/cgi-bin/script.py -d "@racine/test/MediumFile.txt"
+

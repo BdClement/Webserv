@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:29:28 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/26 19:55:13 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/07/06 15:25:57 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -44,7 +44,6 @@ Request::Request(Request const& asign)
 Request::~Request()
 {
 	// std::cout<<"Request destructor called"<<std::endl;
-	// m_pipe.clear();
 }
 
 Request& Request::operator=(Request const & equal)
@@ -70,12 +69,6 @@ Request& Request::operator=(Request const & equal)
 		m_filename = equal.m_filename;
 		m_pipe = equal.m_pipe;
 		m_redirection = equal.m_redirection;
-		// PB ICI impossible de transmettre pipe donc soit erreur soit broken pipe car je ne close pas les pipe avec clear()
-		// m_pipe.pipe_stdin[0] = equal.m_pipe.pipe_stdin[0];
-		// m_pipe.pipe_stdin[1] = equal.m_pipe.pipe_stdin[1];
-		// m_pipe.pipe_stdout[0] = equal.m_pipe.pipe_stdout[0];
-		// m_pipe.pipe_stdout[1] = equal.m_pipe.pipe_stdout[1];
-		// m_pipe.m_pid = equal.m_pipe.m_pid;
 	}
 	return *this;
 }
@@ -100,13 +93,26 @@ void	Request::parseRequest()
 		parseHeaders(startHeaders);
 		handleChunked();
 		if (!m_chunked)
-			m_ready = true;
-		// else
-			//Logique de Parsing de ce qui vient d'etre lu
+		{
+			mapString::iterator it = m_headers.find("Content-Length:");
+			if (it == m_headers.end())// Pour passer outre le if else if dans la main loop
+			{
+				// PRINT_RED("TEST1")<<std::endl;
+				m_ready = true;
+			}
+			else
+			{
+				if (m_read.size() > m_body_pos + 4 && m_read.size() - (m_body_pos + 4) >= (unsigned long)std::atoi(m_headers["Content-Length:"].c_str()))
+				{
+					// PRINT_RED("TEST2 taille du body tester = ")<<m_read.size() - (m_body_pos + 4)<<" taille de Content-Length teste = "<<(unsigned long)std::atoi(m_headers["Content-Length:"].c_str())<<std::endl;
+					m_ready = true;
+				}
+			}
+		}
 		else if (m_end_of_chunked)
 		{
-			// PRINT_GREEN("Ici devra etre mis en place un parsing special de Body Pour cleaner les chunked")<<std::endl;
 			m_ready = true;
+			// PRINT_RED("TEST3")<<std::endl;
 		}
 	}
 	// else
@@ -132,7 +138,7 @@ size_t	Request::parseRequestLine()
 		if (space3 != std::string::npos)
 		{
 			m_error_code = 400;
-
+			// PRINT_RED("Mauvais format dans parseRequestLine")<<std::endl;
 		}// CHECK LESS THAN 3 ELEMENTS
 		else if (space1 != std::string::npos && space2 != std::string::npos)
 		{
@@ -153,10 +159,16 @@ size_t	Request::parseRequestLine()
 			}
 		}
 		else
+		{
 			m_error_code = 400;
+			// PRINT_RED("Mauvais format dans parseRequestLine")<<std::endl;
+		}
 	}
 	else
+	{
 		m_error_code = 400;
+		// PRINT_RED("Mauvais format dans parseRequestLine")<<std::endl;
+	}
 	return pos + 2;// Pour conserver la requete originale mais une fois que tout est bon modifier en supprimant ce qui a ete parser pour garder uniquement le body
 }
 
@@ -165,10 +177,9 @@ bool	Request::MethodAllowed(std::string const & method) const
 	return method == "GET" || method == "POST" || method == "DELETE";
 }
 
-// conserver 1.0 ??
 bool	Request::ProtocolValid(std::string const & protocol) const
 {
-	return protocol == "HTTP/1.1" || protocol == "HTTP/1.0";
+	return protocol == "HTTP/1.1";
 }
 
 // Certains caracteres dit reserves (cf RFC) doivent etre interpretes ou non dans certains cas
@@ -311,8 +322,9 @@ bool	Request::checkContentLengthValue(std::string & value, long long &content_le
 			throw std::invalid_argument("Invalid Content-Length value");
 		if (content_length < 0 || content_length > INT_MAX)
 			throw std::out_of_range("Content-Length value out of range");
-		if (content_length == 0)// On ne permet pas de content length 0 ?? Ou sinon rajouter une condition dans generateResponse Quand aucun error_code ni response code
-		{//							n'est present on met automatiquement 400 ??
+		if (content_length == 0)
+		{
+			// PRINT_RED("Content-Length = 0 dans checkContentValue")<<std::endl;
 			m_error_code = 400;
 			return false;
 		}
@@ -330,51 +342,66 @@ bool	Request::checkContentLengthValue(std::string & value, long long &content_le
 // received respect config. It prepares the uri received depending on the config
 void	Request::setConfig(ServerConfig & serverBlock, int loc_index)
 {
-	// Methodes allowed a faire !
-	if ((m_method == "GET" && !serverBlock._locations[loc_index]._methods[0]) ||
-		(m_method == "POST" && !serverBlock._locations[loc_index]._methods[1]) ||
-		(m_method == "DELETE" && !serverBlock._locations[loc_index]._methods[2]))
-	{
-		std::cout<<"La methode n'est pas autorisee"<<std::endl;
-		m_error_code = 405;
-		return;
-	}
-	std::cout<<"La methode est autorisee"<<std::endl;
-	std::cout<<"test valeur de get dans vecteur : "<<serverBlock._locations[loc_index]._methods[0]<<std::endl;
-	std::cout<<"test valeur de post dans vecteur : "<<serverBlock._locations[loc_index]._methods[1]<<std::endl;
-	std::cout<<"test valeur de delete dans vecteur : "<<serverBlock._locations[loc_index]._methods[2]<<std::endl;
-	// CHECK BODY
-	unsigned long bodySizeMax = 0;
-	if (serverBlock._clientMaxBodySize > 0)
-		bodySizeMax = serverBlock._clientMaxBodySize;
-	if (serverBlock._locations[loc_index]._clientMaxBodySizeLoc > 0)
-		bodySizeMax = serverBlock._locations[loc_index]._clientMaxBodySizeLoc;
-	if (m_read.size() - m_body_pos > bodySizeMax)
-	{
-		m_error_code = 413;
-		return ;
-	}
 	// Set chemin resolu
-	if (!serverBlock._locations[loc_index]._alias.empty())// Alias donc pas de root
+	if (loc_index != -1 && !serverBlock._locations[loc_index]._alias.empty())// Alias donc pas de root
 	{
 		// Remplacer les elements egaux a _pathLoc par la valeur de l'alias
 		m_uri.erase(0, serverBlock._locations[loc_index]._pathLoc.size());
 		m_uri.insert(0, serverBlock._locations[loc_index]._alias);
-		PRINT_GREEN("TEST de m_uri : ")<<m_uri<<std::endl;
+		// PRINT_GREEN("TEST de m_uri apres alias : ")<<m_uri<<std::endl;
 	}
 	else // Pas d'alias donc set de root
 	{
-		if (!serverBlock._locations[loc_index]._rootLoc.empty())
+		if (loc_index != -1 && !serverBlock._locations[loc_index]._rootLoc.empty())
 		{
-			std::cout<<"rentre dans le if"<<std::endl;
+			// std::cout<<"rentre dans le if"<<std::endl;
 			m_root = serverBlock._locations[loc_index]._rootLoc;
+			// m_uri.erase(0, serverBlock._locations[loc_index]._pathLoc.size());
 		}
 		else
 		{
-			std::cout<<"rentre dans le else"<<std::endl;
+			// std::cout<<"rentre dans le else"<<std::endl;
 			m_root = serverBlock._root;
 		}
-		PRINT_GREEN("TEST de m_root : ")<<m_root<<std::endl;
+		// PRINT_GREEN("TEST de m_root : ")<<m_root<<std::endl;
+	}
+	if (m_root.size() != 0 && m_root[m_root.size() - 1] != '/' && (loc_index != -1 && serverBlock._locations[loc_index]._cgiExt.empty()))
+		m_root += "/";
+	if (m_uri.size() > 0 && m_uri[0] == '/')
+		m_uri.erase(m_uri.begin());
+	m_uri = m_root + m_uri;
+	// std::cout<<"TEST de m_uri : "<<m_uri<<std::endl;
+	// Methodes allowed a faire !
+	if ((m_method == "GET" && loc_index != -1 && !serverBlock._locations[loc_index]._methods[0]) ||
+		(m_method == "POST" && loc_index != -1 && !serverBlock._locations[loc_index]._methods[1]) ||
+		(m_method == "DELETE" && loc_index != -1 && !serverBlock._locations[loc_index]._methods[2]))
+	{
+		// std::cout<<"La methode n'est pas autorisee"<<std::endl;
+		m_error_code = 405;
+		return;
+	}
+	// std::cout<<"La methode est autorisee"<<std::endl;
+	// if (loc_index != -1)
+	// {
+	// 	std::cout<<"test valeur de get dans vecteur : "<<serverBlock._locations[loc_index]._methods[0]<<std::endl;
+	// 	std::cout<<"test valeur de post dans vecteur : "<<serverBlock._locations[loc_index]._methods[1]<<std::endl;
+	// 	std::cout<<"test valeur de delete dans vecteur : "<<serverBlock._locations[loc_index]._methods[2]<<std::endl;
+	// }
+	// CHECK BODY
+	if (loc_index != -1 && serverBlock._locations[loc_index]._return.size() != 0)
+		return ;
+	unsigned long bodySizeMax = 0;
+	if (serverBlock._clientMaxBodySize > 0)
+		bodySizeMax = serverBlock._clientMaxBodySize;
+	// PRINT_RED("TEST1 413 ")<<bodySizeMax<<std::endl;
+	if (loc_index != -1 && serverBlock._locations[loc_index]._clientMaxBodySizeLoc > 0)
+		bodySizeMax = serverBlock._locations[loc_index]._clientMaxBodySizeLoc;
+	// PRINT_RED("TEST2 413 ")<<bodySizeMax<<std::endl;
+	if (bodySizeMax != 0 && m_read.size() - m_body_pos > bodySizeMax)
+	{
+		// PRINT_RED("TEST3 413 ")<<bodySizeMax<<std::endl;
+		m_error_code = 413;
+		return ;
 	}
 }
 
@@ -387,8 +414,8 @@ void	Request::checkBody()
 	// std::cout<<" Body pos == "<<m_body_pos<<std::endl;
 	if (m_method == "POST" && !m_chunked)
 	{
-		if (m_read.size() > m_body_pos + 4)// Place m_body_pos au debut du Body s'il y en a un //  A RETIRER
-			m_body_pos += 4; // A tester cas de POST SANS BODY
+		if (m_read.size() > m_body_pos + 4)
+			m_body_pos += 4;
 		mapString::iterator it = m_headers.find("Content-Length:");
 		if (it != m_headers.end())// Si Content-Length est present pour POST
 		{
@@ -398,9 +425,15 @@ void	Request::checkBody()
 				return ;
 			// std::cout<<"readSize | BodyPos | contentLength == "<<m_read.size()<<"  "<<m_body_pos<<"  "<<content_length<<std::endl;
 			if (m_read.size() - m_body_pos < (unsigned long)content_length)// Si Content-Length n'a pas ete lu en entier
+			{
 				m_error_code = 400;
+				// PRINT_RED("Content-Length n'a pas ete lu en entier dnas CheckBody")<<std::endl;
+			}
 			else if (m_read.size() - m_body_pos > (unsigned long)content_length)// Si plus que Content-Length a ete lu
+			{
+				// PRINT_RED("TEST2 413")<<std::endl;
 				m_error_code = 413;
+			}
 		}
 		else// Si Content-Length n'est pas present pour POST
 		{
@@ -410,8 +443,6 @@ void	Request::checkBody()
 	}
 }
 
-// Checker si le client peut envoyer une nouvelle requete alors qu'il na pas eud e reponse a la precedente DISCORD
-// Attention cas ou le chunked de fin est recu et donc on repond a la requete mais que de la donnee est encore envoye sur la socket
 // This function handle chunked request by extracting chunked body of different chunked part in a tmp vector<unsigned char> to use it as a normal Body
 // While webserv stocks the received request, it parses the body. When one or more chunked are full (Size in hexadecimal : Chunked Body of defined size),
 // It exctracts each chunked body until last chunked is received
@@ -538,36 +569,100 @@ int	Request::hexaToInt(std::string const & toConvert)
 
 void	Request::processRequest(ServerConfig & m_config, int loc_index,  Response & response)
 {
-	// FIND VIRTUAL SERVER !
-	PRINT_GREEN("processRequest called")<<std::endl;
-	// std::cout<<"TEST fin de uri => "<<m_uri[m_uri.size() - 3]<<m_uri[m_uri.size() - 2]<<m_uri[m_uri.size() - 1]<<std::endl;
-	// if (m_uri[m_uri.size() - 3] == '.' && m_uri[m_uri.size() - 2] == 'p' && m_uri[m_uri.size() - 1] == 'y')
-	if (!m_config._locations[loc_index]._cgiInterpreter.empty())
+	// PRINT_GREEN("processRequest called")<<std::endl;
+	if (m_error_code != 0 || (loc_index != -1 && m_config._locations[loc_index]._return.size() > 0))
+		return ;
+	if (loc_index != -1 && !m_config._locations[loc_index]._cgiInterpreter.empty())
 		processCGI(m_config, loc_index);
 	else if (m_method == "GET")
 		processGet(m_config, loc_index, response);
 	else if (m_method == "POST")
 		processPost(m_config, loc_index, response);
 	else if (m_method == "DELETE")
-		processDelete(m_config, loc_index, response);
+		processDelete(response);
 }
 
-bool	Request::processGetDirectory(Location & locationBlock, Response & response, std::string & ressource)
+bool Request::is_directory(const std::string& path)
+{
+	struct stat statbuf;
+	if (stat(path.c_str(), &statbuf) != 0)
+		return false;
+	return S_ISDIR(statbuf.st_mode);
+}
+
+void	Request::generateAutoIndex(const std::string& directory_path, Response & response)
+{
+	DIR* dir;
+	struct dirent* ent;
+	std::vector<std::string> entries;
+
+	dir = opendir(directory_path.c_str());
+	if (dir == NULL)
+	{
+		PRINT_RED("Could not open directory: ")<< directory_path << std::endl;
+		m_error_code = 500;
+		return ;
+	}
+	// Read directory entries
+	while ((ent = readdir(dir)) != NULL) {
+		entries.push_back(ent->d_name);
+	}
+	closedir(dir);
+	std::vector<std::string>::iterator it = std::find(entries.begin(), entries.end(), ".");
+	if (it != entries.end())
+		entries.erase(it);
+	std::vector<std::string>::iterator itcgi = std::find(entries.begin(), entries.end(), "cgi-bin");
+	if (itcgi != entries.end())
+		entries.erase(itcgi);
+	// Find path without root to link well elements
+	std::string uriWithoutRoot = m_uri;
+	uriWithoutRoot.erase(0, m_root.size() - 1);
+	if (uriWithoutRoot[uriWithoutRoot.size() - 1] != '/')
+		uriWithoutRoot += '/';
+	// Generate HTML
+	std::string html = "<!DOCTYPE html>\r\n";
+	html += "<html>\r\n\t<head>\r\n\t\t<title>Index of " + directory_path + "</title>\r\n\t</head>\r\n\t<body>" + "\r\n";
+	html += "\t\t<h1>Index of " + directory_path + "</h1>\r\n\t\t<ul>" + "\r\n";
+	for (size_t i = 0; i < entries.size(); ++i)
+	{
+		std::string entry = entries[i];
+		std::string full_path = directory_path + "/" + entry;
+		if (is_directory(full_path))
+		{
+			html += "\t\t\t<li><a href=\"" + uriWithoutRoot + entry + "/\">" + entry + "/</a></li>" + "\r\n";
+		}
+		else
+		{
+			html += "\t\t\t<li><a href=\"" + uriWithoutRoot + entry + "\">" + entry + "</a></li>" + "\r\n";
+		}
+	}
+	html += "\t\t</ul>\r\n\t</body>\r\n</html>\r\n";
+	response.m_response.insert(response.m_response.begin(), html.begin(), html.end());
+	m_response_code = 200;
+	m_uri += ".html";// to be conisederd as a html file by the client
+}
+
+bool	Request::processGetDirectory(Location & locationBlock, Response & response)
 {
 	(void)response;
-	if (locationBlock._autoIndexLoc)//AutoIndex
+	if (!locationBlock._indexLoc.empty())//Index
 	{
-		PRINT_RED("AutoIndex a faire [ BASTIEN ]")<<std::endl;
-		return false;
-	}
-	else if (!locationBlock._indexLoc.empty())//Index
-	{
-		ressource = m_root + "/" + locationBlock._indexLoc;
-		m_uri = ressource;
-		PRINT_RED("TEST de ressource en cas d'index : ")<<ressource<<std::endl;
+		if (m_uri[m_uri.size() - 1] != '/')
+			m_uri += "/";
+		m_uri += locationBlock._indexLoc;
+		if (!checkRessourceAccessibilty(m_uri))
+			return false;
+		// PRINT_RED("TEST de ressource en cas d'index : ")<<m_uri<<std::endl;
 		return true;
 	}
-	m_error_code = 405;
+	else if (locationBlock._autoIndexLoc)//AutoIndex
+	{
+		// PRINT_RED("AutoIndex a faire [ BASTIEN ]")<<std::endl;
+		// std::cout<<"Test autoIndex uri doit etre le repository : "<<m_uri<<std::endl;
+		generateAutoIndex(m_uri, response);
+		return false;
+	}
+	m_error_code = 403;
 	return false;
 }
 
@@ -576,43 +671,47 @@ bool	Request::processGetDirectory(Location & locationBlock, Response & response,
 // If not,the ressource asked is placed in the Response object
 void	Request::processGet(ServerConfig & config, int  loc_index, Response & response)
 {
-	(void)config;
-	(void)loc_index;
-	PRINT_GREEN("processGet Called")<<std::endl;
-	// PRNT_RED("TEST du _return :")<<std::endl;
-	// for ()
-	if (config._locations[loc_index]._return.size() != 0)
-	{
-		// redirection
+	// PRINT_GREEN("processGet Called")<<std::endl;
+	if (loc_index != -1 && config._locations[loc_index]._return.size() != 0)
 		return ;
-	}
-	std::string ressource = m_root + m_uri; // Attention au cas ou ressource est un Directory
-	if (!checkRessourceAccessibilty(ressource))
+	if (!checkRessourceAccessibilty(m_uri))
 	{
 		if (m_uriIsADirectory)
 		{
-			if (!processGetDirectory(config._locations[loc_index], response, ressource))
+			// std::cout<<"Test uriIsAD"<<std::endl;
+			if (!processGetDirectory(config._locations[loc_index], response))
 				return ;
 		}
 		else
 			return ;
 	}
-	// PRINT_RED("Probleme avec la resource demande : ")<<ressource<<" "<<strerror(errno)<<std::endl;// A suuprimer
-	std::ifstream file(ressource.c_str(), std::ios::binary);
+	std::ifstream file(m_uri.c_str(), std::ios::binary);
 	if (!file)
 	{
-		PRINT_RED("Impossible to open ressource : Strange check processGet function")<<std::endl;
+		PRINT_RED("Impossible to open m_uri : Strange check processGet function ")<<m_uri<<std::endl;
 		m_error_code = 500;// Checker d'autres cas possibles ?
 		return ;
 	}
-	// else
-	// 	PRINT_GREEN("Ressource trouvee : ")<<ressource<<std::endl;
-	response.m_response = std::vector<unsigned char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-	response.m_body_size = response.m_response.size();
-	m_response_code = 200;// A voir les cas de variantes ??
+	file.seekg(0, std::ios::end);
+	std::streamsize fileSize = file.tellg();
+	file.seekg(0, std::ios::beg);
+	if (fileSize > MEGAOCTET)
+		m_error_code = 413;
+	else
+	{
+		// PRINT_RED("TEST Empty")<<std::endl;
+		response.m_response.resize(fileSize);
+		file.read(reinterpret_cast< char*>(&response.m_response[0]), fileSize);
+		// response.m_response = std::vector<unsigned char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		response.m_body_size = response.m_response.size();
+		m_response_code = 200;
+	}
 	file.close();
-	response.m_response.push_back('\r');
-	response.m_response.push_back('\n');
+	if (response.m_response.size() != 0)
+	{
+		response.m_response.push_back('\r');
+		response.m_response.push_back('\n');
+	}
 }
 
 // This function checks the ressource asked in a request
@@ -621,9 +720,10 @@ bool	Request::checkRessourceAccessibilty(std::string const & ressource)
 {
 	struct stat s;
 	// EXISTENCE
+	// PRINT_RED("TEST de ressource : ")<<ressource<<std::endl;
 	if (stat(ressource.c_str(), &s) != 0)// La ressource n'existe pas
 	{
-		PRINT_RED("Ressource doesn't exist")<<std::endl;
+		PRINT_RED("Ressource doesn't exist : ")<<ressource<<std::endl;
 		if (m_method != "POST")
 			m_error_code = 404;
 		return false;
@@ -631,7 +731,7 @@ bool	Request::checkRessourceAccessibilty(std::string const & ressource)
 	// DIRECTORY
 	if (s.st_mode & S_IFDIR)// A gerer avec la Config (Pour GET notamment)
 	{
-		PRINT_RED("Ressource is a directory")<<std::endl;
+		PRINT_RED("Ressource is a directory : ")<<ressource<<std::endl;
 		m_uriIsADirectory = true;
 		if (m_method == "DELETE")
 			m_error_code = 405;
@@ -642,7 +742,7 @@ bool	Request::checkRessourceAccessibilty(std::string const & ressource)
 	{
 		if (access(ressource.c_str(), R_OK) == -1)//Checker ordre : Check permission avant directory ?
 		{
-			PRINT_RED("Ressource doesn't have permission access")<<std::endl;
+			PRINT_RED("Ressource doesn't have permission access : ")<<ressource<<std::endl;
 			m_error_code = 403;
 			return false;
 		}
@@ -661,35 +761,28 @@ bool	Request::checkRessourceAccessibilty(std::string const & ressource)
 
 // This function process a Delete request. It checks ressource's accesibility and if the ressource
 // can be deleted it does it, otherwise it prepares error_code to send error_file
-void	Request::processDelete(ServerConfig & config, int loc_index, Response & response)
+void	Request::processDelete(Response & response)
 {
-	(void)config;
-	(void)loc_index;
-	// FIND LOCATION
-	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
-	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
-	PRINT_GREEN("processDelete Called")<<std::endl;
-	std::string ressource = m_root + m_uri;
-	if (!checkRessourceAccessibilty(ressource))
+	(void)response;
+	// PRINT_GREEN("processDelete Called")<<std::endl;
+	if (!checkRessourceAccessibilty(m_uri))
 		return ;
 	else// FILE
 	{
 		std::string body;
-		PRINT_GREEN("Ressource is a file")<<std::endl;
-		if (std::remove(ressource.c_str()) == 0)// DELETED
+		// PRINT_GREEN("Ressource is a file")<<std::endl;
+		if (std::remove(m_uri.c_str()) == 0)// DELETED
 		{
-			body = "\r\nRessource has been deleted\r\n";
-			response.m_response.insert(response.m_response.end(), body.begin(), body.end());
-			m_response_code = 200;
+			// body = "\r\nRessource has been deleted\r\n";
+			m_response_code = 204;
 		}
 		else// NOT DELETED
 		{
-			PRINT_RED("File could't be deleted")<<std::endl;
-			// body = "Ressource couldn't be deleted\r\n";
-			// response.m_response.insert(response.m_response.end(), body.begin(), body.end());
+			// PRINT_RED("File could't be deleted")<<std::endl;
 			m_error_code = 500;// ?? OU 403 Pa de permission si le parent n'a pas les permissions
 		}
-		response.m_content_type = "Content-Type: text/plain\r\n";
+		// response.m_response.insert(response.m_response.end(), body.begin(), body.end());
+		// response.m_content_type = "Content-Type: text/plain\r\n";
 	}
 }
 
@@ -704,14 +797,16 @@ void	Request::processPost(ServerConfig & config, int loc_index, Response & respo
 	// for (std::vector<unsigned char>::iterator it = m_read.begin(); it != m_read.end(); ++it)// AFFICHAGE DE TEST
 	// 		std::cout<<*it;
 	// std::cout<<" ]"<<std::endl;
-	// std::string ressource = "test" + m_uri;
-	PRINT_GREEN("processPost Called")<<std::endl;
+	// PRINT_GREEN("processPost Called")<<std::endl;
+	std::string uploadLoc;
+	if (loc_index != -1)
+		uploadLoc = config._locations[loc_index]._uploadLoc;
 	std::vector<unsigned char>	request_body(m_read.begin() + m_body_pos, m_read.end());
 	mapString::iterator it = m_headers.find("Content-Type:");
 	if (it != m_headers.end() && (it->second.find("multipart/form-data") != std::string::npos))
-		processPostMultipart(extractBoundary(it->second), request_body, config._locations[loc_index]);
+		processPostMultipart(extractBoundary(it->second), request_body, config, loc_index);
 	else if (checkFileUpload()) // Televersement Simple A CHECKER !!!!!
-		uploadFile(request_body, config._locations[loc_index]);
+		uploadFile(request_body, uploadLoc);
 	else
 		stockData(request_body);
 	if (m_error_code == 0 && m_response_code == 201)// Cas multipart successfull
@@ -740,7 +835,7 @@ bool	Request::checkFileUpload()
 // This function store the body sent by the client in webserv's database
 void	Request::stockData(std::vector<unsigned char> const & body)
 {
-	std::ofstream file("test/DataBaseWebserv.txt", std::ios::binary | std::ios::app);
+	std::ofstream file("racine/DataBaseWebserv.txt", std::ios::binary | std::ios::app);
 	if (!file)
 	{
 		PRINT_RED("Error : Imposible to open Webserv Data Base.")<<std::endl;
@@ -753,8 +848,9 @@ void	Request::stockData(std::vector<unsigned char> const & body)
 		PRINT_RED("Error writting Data Base")<<std::endl;
 		m_error_code = 500;// ???
 	}
-	else
+	else if (body.size() != 0)
 	{
+		std::cout<<"Affichage de body size = "<<body.size()<<std::endl;
 		m_response_code = 201;// A checker
 		file << '\n' << '\n';
 	}
@@ -788,15 +884,21 @@ void	Request::extractFilename(std::string & toExtract)
 
 // This function check if the ressource webserv has to create exists and create it
 // It fills it with body received in argument
-void	Request::uploadFile(std::vector<unsigned char> &boundary_body, Location & locationBlock)
+void	Request::uploadFile(std::vector<unsigned char> &boundary_body, std::string & uploadLoc)
 {
+	// PRINT_GREEN("TEST de la taille de l'upload : ")<<boundary_body.size()<<std::endl;
 	if (boundary_body.size() == 0 || m_filename.size() == 0)
 		return ;
+	if (boundary_body.size() > MEGAOCTET)
+	{
+		m_error_code = 413;
+		return ;
+	}
 	std::string location;
-	if (!locationBlock._uploadLoc.empty())
-		location = m_root + "/" + locationBlock._uploadLoc + m_filename;
+	if (!uploadLoc.empty())
+		location = m_root + uploadLoc + m_filename;
 	else
-		location = "test/upload/" + m_filename;
+		location = "racine/upload/" + m_filename;
 	if	(checkRessourceAccessibilty(location))
 	{
 		m_error_code = 409;//Confilct exsite deja !
@@ -807,7 +909,7 @@ void	Request::uploadFile(std::vector<unsigned char> &boundary_body, Location & l
 		std::ofstream file(location.c_str(), std::ios::binary);
 		if (!file)
 		{
-			PRINT_GREEN("TEST location = ")<<location<<std::endl;
+			// PRINT_GREEN("TEST location = ")<<location<<std::endl;
 			PRINT_RED("Error : Imposible to open Webserv Data Base.")<<std::endl;
 			m_error_code = 500;
 			return ;
@@ -816,9 +918,9 @@ void	Request::uploadFile(std::vector<unsigned char> &boundary_body, Location & l
 		if (!file)
 		{
 			PRINT_RED("Error writting Data Base")<<std::endl;
-			m_error_code = 500;// ???
+			m_error_code = 500;
 		}
-		else
+		else if (boundary_body.size() != 0)
 			m_response_code = 201;// A checker
 		file.close();
 	}
@@ -826,10 +928,11 @@ void	Request::uploadFile(std::vector<unsigned char> &boundary_body, Location & l
 
 // This function is the main loop for processing each block of a multipart/form-data request
 // It splits each block and sends it to processPostBoundaryBlock()
-void	Request::processPostMultipart(std::string boundary, std::vector<unsigned char> & body, Location & locationBlock)
+void	Request::processPostMultipart(std::string boundary, std::vector<unsigned char> & body, ServerConfig & config, int loc_index)
 {
 	if (boundary.size() == 0)
 	{
+		PRINT_RED("Boundarysize dans processMultipart")<<std::endl;
 		m_error_code = 400;
 		return ;
 	}
@@ -854,7 +957,7 @@ void	Request::processPostMultipart(std::string boundary, std::vector<unsigned ch
 		// 	std::cout<<*test;
 		// TRAITEMENT DU BLOCK
 		std::vector<unsigned char> boundary_block(it, next);
-		processPostBoundaryBlock(boundary_block, locationBlock);
+		processPostBoundaryBlock(boundary_block, config, loc_index);
 		// EFFACE LE BLOCK DEJA TRAITE
 		body.erase(body.begin(), next);// On efface le block qui a ete traite
 		// if (it == std::search(body.begin(), body.end(), end_boundary.begin(), end_boundary.end()))// a remettre dans le while ??????!!!
@@ -862,31 +965,30 @@ void	Request::processPostMultipart(std::string boundary, std::vector<unsigned ch
 	}
 	if (m_error_code != 0 && m_response_code != 0)// Cas multiple Voir le comportement adequat 207 ??
 	{
+		// PRINT_GREEN("TEST multipart erro_code = ")<<m_error_code<<" response_code = "<<m_response_code<<std::endl;
 		m_response_code = 0;
 		m_error_code = 400;
 	}
-	// Multipart impossible avec CGI ?
 }
 
-// Code de reponse :
-//		Si tout le monde reussit : 200 ou 201
-//		Tout le monde ne reussit pas mais certain reussisent : 400 prioritaire
-//		Tout le mond echoue : 400 Prioritaire si il yen a un sinon
 // This function recveive a multipart/form-data block, strores new headers from it thanks to updateHeaders()
 // Depending on new headers result, it process the request by storing data or upload file
-void	Request::processPostBoundaryBlock(std::vector<unsigned char> &boundary_block, Location & locationBlock)
+void	Request::processPostBoundaryBlock(std::vector<unsigned char> &boundary_block, ServerConfig & config, int loc_index)
 {
 	// PRINT
 	// PRINT_GREEN("Traitement du block boundary")<<std::endl;
 	// for (std::vector<unsigned char>::iterator it = boundary_block.begin(); it != boundary_block.end(); ++it)
 	// 	std::cout<<*it;
 	// SPLIT HEADERS / BODY
+	std::string uploadLoc;
+	if (loc_index != -1)
+		uploadLoc = config._locations[loc_index]._uploadLoc;
 	unsigned char	endOfHeaders[] = {'\r', '\n', '\r', '\n'};
 	std::vector<unsigned char>::iterator	it;
 	it = std::search(boundary_block.begin(), boundary_block.end(), endOfHeaders, endOfHeaders + 4);
 	if (it == boundary_block.end())
 	{
-		// PRINT_RED("Pas de fin de Headers trouve dans le block boundary")<<std::endl;
+		PRINT_RED("Pas de fin de Headers trouve dans le block boundary")<<std::endl;
 		m_error_code = 400;
 		return ;
 	}
@@ -896,6 +998,7 @@ void	Request::processPostBoundaryBlock(std::vector<unsigned char> &boundary_bloc
 	// std::cout<<"Affichage des boundary headers ::   "<<boundary_headers<<std::endl;
 	if (it + 4 == boundary_block.end())// S'IL N'Y A PAS DE BODY
 	{
+		PRINT_RED("Pas de body dans processPostBoundaryBlock")<<std::endl;
 		m_error_code = 400;
 		return ;
 	}
@@ -904,10 +1007,12 @@ void	Request::processPostBoundaryBlock(std::vector<unsigned char> &boundary_bloc
 	// for (std::vector<unsigned char>::iterator itest = boundary_body.begin(); itest != boundary_body.end(); ++itest)
 	// 	std::cout<<*itest;
 	updateHeaders(boundary_headers);
+	if (boundary_body.size() <= 2)
+		return ;
 	if (checkFileUpload())
 	{
 		// PRINT_RED("UPLOAD MULTIPART")<<std::endl;
-		uploadFile(boundary_body, locationBlock);//Reset multi part a inserer ici je pense
+		uploadFile(boundary_body, uploadLoc);//Reset multi part a inserer ici je pense
 		resetMultipart();
 	}
 	else
@@ -956,22 +1061,22 @@ std::string	Request::extractBoundary(std::string & contentTypeValue)
  *                                                                                                         *
  ***********************************************************************************************************/
 
-// REQUEST_METHOD SCRIPT_NAME QUERY_STRING
-// CONTENT_TYPE CONTENT_LENGTH SERVER_PROTOCOL PATH_INFO
-// A MODIFIER avec Config !!!
+// This function set Env for CGI script
 void	Request::setEnv(char **env)
 {
 	m_pipe.request_method = "REQUEST_METHOD=" + m_method;
 	env[0] = &m_pipe.request_method[0];
-	// trouver le script name dans uri => le reste = PATH_INFO
-	m_pipe.script_name = "SCRIPT_NAME=";
-	m_pipe.path_info = "PATH_INFO=";
+	m_pipe.script_name = "SCRIPT_NAME=";// + m_pipe.script_name;
+	m_pipe.path_info = "PATH_INFO=";// + m_pipe.path_info;
 	std::size_t script_end = m_uri.find(".py");
-	if (script_end != std::string::npos)
+	if (script_end != std::string::npos)// SPLIT script_name and path_info
 	{
-		m_pipe.script_name.insert(m_pipe.script_name.end(), m_uri.begin(), m_uri.begin() + script_end + 3);
+		std::size_t lastSlash = m_uri.find_last_of("/\\", script_end);
+		m_pipe.script_name.insert(m_pipe.script_name.end(), m_uri.begin() + lastSlash + 1, m_uri.begin() + script_end + 3);
 		m_pipe.path_info.insert(m_pipe.path_info.end(), m_uri.begin() + script_end + 3, m_uri.end());
 		PRINT_GREEN("TEST script name et path info : ")<<m_pipe.script_name<<"  "<<m_pipe.path_info<<std::endl;
+		m_uri.erase(script_end + 3);
+		PRINT_GREEN("Test de m_uri ")<<m_uri<<std::endl;
 	}
 	env[1] = &m_pipe.script_name[0];
 	env[2] = &m_pipe.path_info[0];
@@ -993,13 +1098,15 @@ void	Request::setEnv(char **env)
 	env[7] = NULL;
 }
 
-// A MODIFIER avec Config
+// This function set arg for execve
 void	Request::setArg(char **arg, std::string & interpreter)
 {
-	m_pipe.ressource = m_root + m_uri;
+	std::size_t equal = m_pipe.script_name.find("=");
+	m_pipe.script_name.erase(0, equal + 1);
 	m_pipe.bin = interpreter;// cgInterpreter
-	PRINT_GREEN("TEST de arg ressource et interpreter = ")<<m_pipe.ressource<<"  "<<m_pipe.bin<<std::endl;
-	arg[0] = &m_pipe.ressource[0];
+	// PRINT_GREEN("TEST de arg script et interpreter = ")<<m_pipe.script_name<<"  "<<m_pipe.bin<<std::endl;
+	arg[0] = &m_pipe.script_name[0];
+	// arg[0] = &m_uri[0];
 	arg[1] = &m_pipe.bin[0];
 	arg[2] = NULL;
 }
@@ -1009,7 +1116,7 @@ bool	Request::setPipe()
 	// PRINT_GREEN("pipe creation")<<std::endl;
 	if (pipe(m_pipe.pipe_stdout) == -1)
 	{
-		PRINT_RED("Error pipe")<<std::endl;
+		// PRINT_RED("Error pipe")<<std::endl;
 		m_error_code = 500;
 		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
 		m_cgi = false; // Pour generer la reponse
@@ -1019,7 +1126,7 @@ bool	Request::setPipe()
 	{
 		if (pipe(m_pipe.pipe_stdin) == -1 )
 		{
-			PRINT_RED("Error pipe")<<std::endl;
+			// PRINT_RED("Error pipe")<<std::endl;
 			m_pipe.clear();
 			m_error_code = 500;
 			// PRINT_RED("Mise a false de m_cgi")<<std::endl;
@@ -1031,10 +1138,9 @@ bool	Request::setPipe()
 	// MISE EN MODE NON BLOQUANT DES PIPES
 	if (fcntl(m_pipe.pipe_stdout[0], F_SETFL, O_NONBLOCK) < 0 || fcntl(m_pipe.pipe_stdout[1], F_SETFL, O_NONBLOCK) < 0)
 	{
-		PRINT_GREEN("Error fcntl pipe")<<std::endl;
+		// PRINT_GREEN("Error fcntl pipe")<<std::endl;
 		m_pipe.clear();
 		m_error_code = 500;
-		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
 		m_cgi = false; // Pour generer la reponse
 		return false;
 	}
@@ -1042,10 +1148,9 @@ bool	Request::setPipe()
 	{
 		if (fcntl(m_pipe.pipe_stdin[0], F_SETFL, O_NONBLOCK) < 0 || fcntl(m_pipe.pipe_stdin[1], F_SETFL, O_NONBLOCK) < 0)
 		{
-			PRINT_GREEN("Error fcntl pipe")<<std::endl;
+			// PRINT_GREEN("Error fcntl pipe")<<std::endl;
 			m_pipe.clear();
 			m_error_code = 500;
-			// PRINT_RED("Mise a false de m_cgi")<<std::endl;
 			m_cgi = false; // Pour generer la reponse
 			return false;
 		}
@@ -1070,12 +1175,30 @@ void	Request::cgiChildProcess(char **env, char **arg)
 			signalHandler(SIGINT);
 		}
 	}
+	// CHDIR
+	std::size_t script_end = m_uri.find(".py");
+	m_pipe.working_dir = m_uri;
+	std::size_t found = m_pipe.working_dir.find_last_of("/\\", script_end);
+	m_pipe.working_dir.erase(found + 1, m_pipe.working_dir.size());
+	// PRINT_RED("Test du working_dir = ")<<m_pipe.working_dir<<std::endl;
+	if (chdir(m_pipe.working_dir.c_str()) != 0)
+	{
+		PRINT_RED("Chdir Error in child process")<<std::endl;
+		signalHandler(SIGINT);
+	}
+	// PRINT_RED("TEST1 child process")<<std::endl;
 	// REDIRECTION
 	if (dup2(m_pipe.pipe_stdout[1], STDOUT_FILENO) == -1)
 	{
 		PRINT_RED("DUP2 Error in child process")<<std::endl;
 		signalHandler(SIGINT);
 	}
+	if (close(m_pipe.pipe_stdout[1]) == -1)//Pipe de lecture de stdout
+	{
+		PRINT_RED("Close error in child process")<<std::endl;
+		// signalHandler(SIGINT);
+	}
+	// PRINT_RED("TEST2")<<std::endl;
 	if (m_method == "POST")
 	{
 		if (dup2(m_pipe.pipe_stdin[0], STDIN_FILENO)== -1)
@@ -1083,12 +1206,19 @@ void	Request::cgiChildProcess(char **env, char **arg)
 			PRINT_RED("DUP2 Error in child process")<<std::endl;
 			signalHandler(SIGINT);
 		}
+		if (close(m_pipe.pipe_stdin[0]) == -1)//Pipe de lecture de stdout
+		{
+			PRINT_RED("Close error in child process")<<std::endl;
+			// signalHandler(SIGINT);
+		}
 	}
+	// PRINT_RED("TEST3")<<std::endl;
 	// EXECVE
 	if (execve(arg[0], arg, env) == -1) // Gestion plus precise de code de retour ?? (ex permission denied 403 ??)
 	{
-		PRINT_RED("GALERE")<<std::endl;
-		perror("execve");
+		PRINT_RED("Execve failed")<<std::endl;
+		std::cerr<<"arg = "<<arg[0]<<" "<<arg[1]<<std::endl;
+		// perror("execve");
 		signalHandler(SIGINT);
 	}
 }
@@ -1099,7 +1229,6 @@ void	Request::cgiParentProcess(pid_t pid)
 	m_pipe.m_pid = pid;
 	// PRINT_RED("PID parent = ")<<pid<<std::endl;
 	// PRINT_GREEN("TEST PARENT PROCESS")<<std::endl;
-	// PID A TUER pour eviter les fantomes
 	if (close(m_pipe.pipe_stdout[1]) == -1)//Pipe d'ecriture stdout
 	{
 		PRINT_RED("Close error in parent process")<<std::endl;
@@ -1108,7 +1237,6 @@ void	Request::cgiParentProcess(pid_t pid)
 		// puis fermer les pipes du parent
 		m_error_code = 500;
 		m_pipe.clear();
-		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
 		m_cgi = false; // Pour generer la reponse
 		return ;
 	}
@@ -1124,7 +1252,6 @@ void	Request::cgiParentProcess(pid_t pid)
 			m_pipe.pipe_stdout[1] = 0;
 			m_pipe.clear();
 			m_error_code = 500;
-			// PRINT_RED("Mise a false de m_cgi")<<std::endl;
 			m_cgi = false; // Pour generer la reponse
 		}
 		m_pipe.pipe_stdin[0] = 0;
@@ -1132,28 +1259,35 @@ void	Request::cgiParentProcess(pid_t pid)
 	// std::cout<<"pipe_stdin[] == "<<m_pipe.pipe_stdin[1]<<" pipe_stdout[0] == "<<m_pipe.pipe_stdout[0]<<std::endl;
 }
 
+// This function handle a cgi request
 void	Request::processCGI(ServerConfig & config, int loc_index)
 {
-	// FIND LOCATION
-	// DIFFERENTS CHECK DU A LA CONFIG OU AU HEADER DE LA REQUETE ?
-	// DEFINITION DE RESSOURCE GRACE A LA CONFIG
-	PRINT_GREEN("ProcessCGI called")<<std::endl;
-	m_cgi = true; // Pour faire cette logique une fois seulement
-	(void)config;
+	// PRINT_GREEN("ProcessCGI called")<<std::endl;
 	if (m_method == "DELETE")
 	{
-		m_error_code = 403;// a verifier
-		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
-		m_cgi = false; // Pour generer la reponse
+		m_error_code = 403;
+		// m_cgi = false; // Pour generer la reponse
 		return ;
 	}
-	// SET ENV / SET ARG
+	m_cgi = true; // Pour faire cette logique une fois seulement
+	// ChHECK RESSOURCE VALIDITY
+	// std::cout<<"TEST dans process CGI de uri : "<<m_uri<<std::endl;
 	// PRINT_GREEN("set Env")<<std::endl;
 	char *env[8];
 	setEnv(env);
+	if (!checkRessourceAccessibilty(m_uri))
+		return ;
+	if (m_uri.size() < 3 || m_uri.find(".py") == std::string::npos)
+	{
+		PRINT_RED("Ressource doesn't have correct format [.py]")<<std::endl;
+		m_error_code = 400;
+		return ;
+	}
+	// SET ENV / SET ARG
 	char *arg[3];
+	// PRINT_GREEN("set Arg")<<std::endl;
 	setArg(arg, config._locations[loc_index]._cgiInterpreter);
-	// CREATION DE PIPE
+	// PIPE CREATION
 	if (!setPipe())
 		return ;
 	// FORK
@@ -1171,7 +1305,6 @@ void	Request::processCGI(ServerConfig & config, int loc_index)
 		PRINT_RED("Fork error : ")<<strerror(errno)<<std::endl;
 		m_pipe.clear();
 		m_error_code = 500;
-		// PRINT_RED("Mise a false de m_cgi")<<std::endl;
 		m_cgi = false;
 	}
 }
@@ -1223,17 +1356,7 @@ void	Request::clear()
 	// m_pipe => normalement rien a faire puisque tout sera close et a 0a faire en fin de reponse HTTP
 }
 
-// A faire :
-//			-Merge /
-//			-Implementations des fonctionnalites propre a la config
-//			 [Page d'erreur par defaut / Limite BodySize / methodes acceptees / redirection
-//			  root a partir de root Server / listing de repositories / file par defaut en cas de repo en uri]
-
 //			-Penser a l'affichage final
-//			-Mettre une limite de fichier upload adequate ?
-//			-Gerer les code de reponse pour multipart ! (On verra lors du testeur) + bloc vide multipart (400 ? pour etre coherent avec le reste)
-
-//			-Est ce qu'on doit gerer plusieurs CGI donc tolerer plusieurs config ou uniquement le CGI python ?
 
 //			-Possible derniers petits cas de Broken pipe => Solution prioritaire faire un waitpid apres chaque kill
 //			-Un cas de broken pipe que je ne retrouve plus. C'est dans un enchainement de requete CGI.
@@ -1245,27 +1368,17 @@ void	Request::clear()
 //					A METTRE DANS LE ACCEPT
 
 
-//			- Faire une focntion qui fais les check de la requete en fonction de la config trouvee (Server + Location)
-//			- Faire une fonction qui determine la variable ressource en focntion de la config (root)
-//			- Passer en argument la config correspondante pour trouver les variables necessaires en cas de besoin
-//			- Faire uen fonction listing repositories
+//	-Check correction
 
-// Ce qui reste de la config :
-//	-listing repositories (bloc Location) Bastien => a inserer a l'endroit prevu
+//	Probleme CGI :
+//		-"Exception ignored in: <_io.TextIOWrapper name='<stdout>' mode='w' encoding='utf-8'>
+// 			BlockingIOError: [Errno 11] write could not complete without blocking"
+//		lorsque j'envoie de la donnee de maniere consequante au script CGI.
+//		P
+//		Ce probleme n'est plus present lorsque je mets les pipes en mode Bloquant
+//		- Pipe ouvert et "valgrind: script.py: command not found" lorsque je mets tout les flags valgrind
+//		  Lorsque j'eneleve track-children pas de pipe ouvert et le premier probleme intervient
 
-// Ce qui est deja fait de la config :
-//	-upload location
-//	-redirection HTTP (bloc Location) A VOIR
-//	-Page d'erreur par defaut (Bloc Server)
-//	-index (bloc server et Location) => Pour toutes les methodes ?? Only GET
-//	-Choisir le port et l’host de chaque "serveur".
-//	-Setup server_names ou pas.
-//	-Le premier serveur pour un host:port sera le serveur par défaut pour cet host:port
-//	 (ce qui signifie qu’il répondra à toutes les requêtes qui n’appartiennent pas à un
-//	 autre serveur).
-//	-Limiter la taille du body des clients.
-//	-Définir une liste de méthodes HTTP acceptées pour la route.
-//	-Définir un répertoire ou un fichier à partir duquel le fichier doit être recherché
-//	 (par exemple si l’url /kapouet est rootée sur /tmp/www, l’url /kapouet/pouic/toto/pouet
-//	 est /tmp/www/pouic/toto/pouet).
-//	-CGI
+
+//Solution possible
+//	Faire le chdir dans le parent et

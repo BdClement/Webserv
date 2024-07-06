@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/04/25 15:38:08 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/24 12:03:15 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/07/06 15:29:30 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -89,11 +89,11 @@ bool	Connection::setAddrPort()
 	if (getsockname(this->socket, (struct sockaddr*)&addr_tmp, &len_addr_tmp) == -1)
 	{
 		close(this->socket);
-		PRINT_RED("Error getsockname on new connection : Webserv can't create this new conneciton.")<<std::endl;
+		PRINT_RED("Error getsockname on new connection : Webserv can't create this new connection.")<<std::endl;
 		return false;
 	}
 	this->addr = convertAddrBack(addr_tmp.sin_addr.s_addr);
 	this->port = ntohs(addr_tmp.sin_port);
-	PRINT_RED("Test du port et adresse apres accept : ")<<this->addr<<" : "<<this->port<<std::endl;
+	// PRINT_RED("Test du port et adresse apres accept : ")<<this->addr<<" : "<<this->port<<std::endl;
 	return true;
 }

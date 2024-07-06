@@ -6,14 +6,13 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/13 12:23:59 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/26 19:30:13 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/28 14:29:26 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #pragma once
 
 #include "webserv.hpp"
-// #include "Config.hpp"
 #include "ServerConfig.hpp"
 #include "Response.hpp"
 
@@ -34,7 +33,7 @@ class Request
 			~PipeHandler();
 			PipeHandler & operator=(PipeHandler const& equal);
 			void	closeAndReset(int &pipe);
-			void	clear(); // Pour passer a une autre requete (notamment les bool)
+			void	clear();
 
 		private :
 			int		pipe_stdin[2];
@@ -48,13 +47,12 @@ class Request
 			std::string CType;
 			std::string	CLength;
 			std::string	server;
-			std::string	ressource;
 			std::string	bin;
+			std::string	working_dir;
 
 		friend class Handler;
 		friend class Connection;
 		friend class Request;
-		// friend class Response;
 	};
 
 	// PARSING REQUEST
@@ -77,26 +75,24 @@ class Request
 	void			lastChunk(std::vector<unsigned char>::iterator & bodyStart, int pos, int size);
 
 	// PROCESS REQUEST
-	// void			processRequest(std::vector<Config> & m_config, Response & response);
 	void			processRequest(ServerConfig & m_config, int loc_index, Response & response);
 	// Get
-	// void			processGet(Config & config, Response & response);
 	void			processGet(ServerConfig & config, int loc_index, Response & response);
 	bool			checkRessourceAccessibilty(std::string const & ressource);
-	bool			processGetDirectory(Location & locationBlock, Response & response, std::string & ressource);
+	bool			processGetDirectory(Location & locationBlock, Response & response);
+	void			generateAutoIndex(const std::string& directory_path, Response & response);
+	bool 			is_directory(const std::string& path);
 	// Delete
-	// void			processDelete(Config & config, Response & response);
-	void			processDelete(ServerConfig & config, int loc_index, Response & response);
+	void			processDelete(Response & response);
 	// Post
-	// void			processPost(Config & config, Response & response);
 	void			processPost(ServerConfig & config, int loc_index, Response & response);
 	void			stockData(std::vector<unsigned char> const & body);
-	bool			checkFileUpload();// a voir si je ne retourne pas une string pour ne pas srucharger ma request
+	bool			checkFileUpload();
 	void			extractFilename(std::string & toExtract);
-	void			uploadFile(std::vector<unsigned char> &boundary_body, Location & locationBlock);
+	void			uploadFile(std::vector<unsigned char> &boundary_body, std::string & uploadLoc);
 	// Multipart/form-data
-	void			processPostMultipart(std::string boundary, std::vector<unsigned char> & body, Location & locationBlock);
-	void			processPostBoundaryBlock(std::vector<unsigned char> &boundary_block, Location & locationBlock);
+	void			processPostMultipart(std::string boundary, std::vector<unsigned char> & body,ServerConfig & config, int loc_index);
+	void			processPostBoundaryBlock(std::vector<unsigned char> &boundary_block, ServerConfig & config, int loc_index);
 	std::string		extractBoundary(std::string & contentTypeValue);
 	void			updateHeaders(std::string &boundary_headers);
 	void			resetMultipart();

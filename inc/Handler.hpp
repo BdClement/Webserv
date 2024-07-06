@@ -10,15 +10,12 @@
 /*                                                                            */
 /* ************************************************************************** */
 
-// Cette classe sera l'objet principal qui represente notre programme de serveur web
-
 #pragma once
 
 #include "webserv.hpp"
 #include "Connection.hpp"
 #include "ServerConfig.hpp"
 
-// class Config;
 class ServerConfig;
 
 class Handler
@@ -34,19 +31,16 @@ class Handler
 	// UTIILS
 	int		recoverIndexConnection(int const socket) const;
 	bool	isListenningConnection(int const socket);
-	// bool	interfaceAlreadyExist(std::vector<Config>::iterator const& toFind);
 	bool	interfaceAlreadyExist(std::vector<ServerConfig>::iterator const& toFind);
 
 	// PARSING CONFIG FILE
-	// void	initTestConfig(char * arg);//fonction qui joue le role du parsing
-	bool	initTestConfig(char * arg);
+	bool	initConfig(char * arg);
 	int		findServerBlock(Connection & connection);
 	int		findLocationBlock(ServerConfig & serverBlock, std::string & uri);
 
 	// SERVER INITIALISATION
 
 	void	initServer();
-	// bool	initListenConnection(std::vector<Config>::iterator & it, Connection & new_connection);// Init struct sockaddr_in et epoll_event
 	bool	initListenConnection(std::vector<ServerConfig>::iterator & it, Connection & new_connection);
 
 	// LAUNCHING SERVER
@@ -62,7 +56,7 @@ class Handler
 	void	handlingCgiEpollout(Connection & connection, int &fd);
 	// Epollhup
 	void	epollhupEvent(struct epoll_event & events, int index);
-	void	handlingCgiEpollhup(Connection & connection, int &fd);
+	void	handlingCgiEpollhup(Connection & connection);
 	// Epollerr
 	void	handlingEpollerrEvent(Connection & connection);
 	// Event Monitoring
@@ -76,7 +70,6 @@ class Handler
 
 	private:
 
-	// std::vector<Config>			m_config;// Objets issus du Parsing du config file
 	std::vector<ServerConfig>	m_config;
 	std::vector<Connection>		m_listen_connection;// Sockets d'ecoutes
 	std::vector<Connection>		m_http_connection;// Sockets de communication HTTP
@@ -95,7 +88,6 @@ bool operator()(const Connection& obj) const{
 
 // Global structure to exit proprely
 struct clearFromHanlder{
-	// std::vector<Config>							* global_config;
 	std::vector<ServerConfig>					* global_config;
 	std::vector<Connection> 					* global_listen_connection;
 	std::vector<Connection> 					* global_http_connection;

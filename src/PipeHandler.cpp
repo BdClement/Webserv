@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/06/12 12:24:25 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/26 11:47:26 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/06/28 15:22:40 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -24,16 +24,6 @@ Request::PipeHandler::PipeHandler() : m_bytes_sent(0), m_pid(0)
 Request::PipeHandler::~PipeHandler() // A voir dans le cas ou le pipe est deja close mais pasmis a 0 ?
 {
 	// std::cout<<"Destructor PipeHandler called"<<std::endl;
-	// clear();
-	// A verifier 2 seront deja close d'entree
-	// if (pipe_stdin[0] != 0)
-	// 	close(pipe_stdin[0]);
-	// if (pipe_stdin[1] != 0)
-	// 	close(pipe_stdin[1]);
-	// if (pipe_stdout[0] != 0)
-	// 	close(pipe_stdout[0]);
-	// if (pipe_stdout[1] != 0)
-	// 	close(pipe_stdout[1]);
 }
 
 Request::PipeHandler & Request::PipeHandler::operator=(PipeHandler const& equal)
@@ -53,7 +43,6 @@ Request::PipeHandler & Request::PipeHandler::operator=(PipeHandler const& equal)
 		this->CType = equal.CType;
 		this->CLength = equal.CLength;
 		this->server = equal.server;
-		this->ressource = equal.ressource;
 		this->bin = equal.bin;
 	}
 	return *this;
@@ -84,6 +73,5 @@ void	Request::PipeHandler::clear()
 	CType.clear();
 	CLength.clear();
 	server.clear();
-	ressource.clear();
 	bin.clear();
 }

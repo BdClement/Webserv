@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test de televersement de fichiers multiples</title>
+</head>
+<body>
+    <h2>Televersement de fichiers multiples et d'autres donnees</h2>
+    <form action="http://localhost:8080/upload" method="post" enctype="multipart/form-data">
+        <label for="fichier1">Fichier 1 :</label>
+        <input type="file" name="fichier1" id="fichier1"><br>
+
+        <label for="fichier2">Fichier 2 :</label>
+        <input type="file" name="fichier2" id="fichier2"><br>
+
+        <label for="nom">Nom :</label>
+        <input type="text" name="nom" id="nom"><br>
+
+        <label for="email">Email :</label>
+        <input type="text" name="email" id="email"><br>
+
+        <input type="submit" value="Envoyer">
+    </form>
+</body>
+</html>

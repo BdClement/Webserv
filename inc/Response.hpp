@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/17 16:02:43 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/26 17:25:36 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/07/03 14:19:02 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -50,7 +50,5 @@ class Response
 	std::string					m_error_page;
 
 	friend class Handler;
-	// friend class Connection;
 	friend class Request;
-
 };

@@ -6,7 +6,7 @@
 /*   By: clbernar <clbernar@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/05/17 16:05:07 by clbernar          #+#    #+#             */
-/*   Updated: 2024/06/26 18:20:33 by clbernar         ###   ########.fr       */
+/*   Updated: 2024/07/06 15:27:20 by clbernar         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -42,20 +42,20 @@ Response& Response::operator=(Response const & equal)
 
 void	Response::set_error_file()
 {
-	m_error_file[400] = "test/error/400BadRequest.html";
-	m_error_file[403] = "test/error/403Forbidden.html";
-	m_error_file[404] = "test/error/404NotFound.html";
-	m_error_file[405] = "test/error/405MethodNotAllowed.html";
-	m_error_file[409] = "test/error/409Conflict.html";
-	m_error_file[411] = "test/error/411LengthRequired.html";
-	m_error_file[413] = "test/error/413PayloadTooLarge.html";
-	m_error_file[414] = "test/error/414UriTooLarge.html";
-	m_error_file[415] = "test/error/UriTooLarge.html";
-	m_error_file[431] = "test/error/RequestHeaderFieldsTooLarge.html";
-	m_error_file[500] = "test/error/500InternalServerError.html";
-	m_error_file[501] = "test/error/501NotImplemented.html";
-	m_error_file[503] = "test/error/503ServiceUnavailable.html";
-	m_error_file[505] = "test/error/505HTTPVersionNotSupported.html";
+	m_error_file[400] = "racine/error/400BadRequest.html";
+	m_error_file[403] = "racine/error/403Forbidden.html";
+	m_error_file[404] = "racine/error/404NotFound.html";
+	m_error_file[405] = "racine/error/405MethodNotAllowed.html";
+	m_error_file[409] = "racine/error/409Conflict.html";
+	m_error_file[411] = "racine/error/411LengthRequired.html";
+	m_error_file[413] = "racine/error/413PayloadTooLarge.html";
+	m_error_file[414] = "racine/error/414UriTooLarge.html";
+	m_error_file[415] = "racine/error/UriTooLarge.html";
+	m_error_file[431] = "racine/error/RequestHeaderFieldsTooLarge.html";
+	m_error_file[500] = "racine/error/500InternalServerError.html";
+	m_error_file[501] = "racine/error/501NotImplemented.html";
+	m_error_file[503] = "racine/error/503ServiceUnavailable.html";
+	m_error_file[505] = "racine/error/505HTTPVersionNotSupported.html";
 }
 
 void	Response::set_code_meaning()
@@ -85,8 +85,9 @@ void Response::findErrorPage(ServerConfig & serverBlock, int error_code, std::st
 {
 	std::map<int, std::string>::iterator it = serverBlock._errorPages.find(error_code);
 	if (it != serverBlock._errorPages.end())
-		m_error_page = root + "/" + it->second;
-	std::cout<<"TEST de m_error_page dans findErrorPage : "<<m_error_page<<std::endl;
+		m_error_page = root + it->second;
+	// std::cout<<"TEST de m_error_page dans findErrorPage : "<<m_error_page<<std::endl;
+	// PRINT_GREEN("Test de root : ")<<root<<" Et de size de root : "<<root.size()<<std::endl;
 }
 
 void	Response::generateRedirectionResponse(Request & request, Location & locationBlock)
@@ -102,7 +103,7 @@ void	Response::generateRedirectionResponse(Request & request, Location & locatio
 
 void	Response::generateResponse(Request & request, ServerConfig & serverBlock, int loc_index)
 {
-	if (serverBlock._locations[loc_index]._return.size() != 0)
+	if (request.m_error_code == 0 && loc_index != -1 && serverBlock._locations[loc_index]._return.size() != 0)
 	{
 		generateRedirectionResponse(request, serverBlock._locations[loc_index]);
 		return ;
@@ -124,6 +125,8 @@ void	Response::generateStatusLine(Request & request)
 	std::string statusLine = "HTTP/1.1 ";
 	std::string code_meaning;
 	std::stringstream code;
+	if (request.m_error_code == 0 && request.m_response_code == 0)
+		request.m_error_code = 500;
 	if (request.m_error_code != 0)
 	{
 		code << request.m_error_code;
@@ -148,28 +151,37 @@ void	Response::generateStatusLine(Request & request)
 	// PRINT_GREEN("Taille de la reponse a generateStatusLine ")<<m_response.size()<<std::endl;
 }
 
-	//Content-Disposition Pour le televersation de fichier
-	// Location pour les redirection
-	// Date [facultatif]
-	// Content-Type
 // This function generate appropriate headers depending on the Request state
 void	Response::generateHeaders(Request & request)
 {
 	(void)request;
 	std::string crlf = "\r\n";
+	// if (m_response.size() != 0)
 	m_response.insert(m_response.begin(), crlf.begin(), crlf.end());
-	if (m_body_size != 0) // IF BODY
+	if (m_response.size() != 2)
 	{
-		// Content-Length
-		std::stringstream ss;
-		ss << m_body_size;
-		std::string contentLength = "Content-Length: " + ss.str() + "\r\n";
+		std::stringstream value;
+		size_t size = m_response.size() - 2;
+		value << size;
+		std::string contentLength = "Content-Length: " + value.str() + "\r\n";
 		m_response.insert(m_response.begin(), contentLength.begin(), contentLength.end());
 		//Content-Type
 		if (m_content_type.size() == 0)
 			setContentType(request.m_uri);
 		m_response.insert(m_response.begin(), m_content_type.begin(), m_content_type.end());
 	}
+	// if (m_body_size != 0) // IF BODY
+	// {
+	// 	// Content-Length
+	// 	std::stringstream ss;
+	// 	ss << m_body_size;
+	// 	std::string contentLength = "Content-Length: " + ss.str() + "\r\n";
+	// 	m_response.insert(m_response.begin(), contentLength.begin(), contentLength.end());
+	// 	//Content-Type
+	// 	if (m_content_type.size() == 0)
+	// 		setContentType(request.m_uri);
+	// 	m_response.insert(m_response.begin(), m_content_type.begin(), m_content_type.end());
+	// }
 	// Server [Facultatif]
 	std::string server = "Server: HTTP/1.1 webserv\r\n";
 	m_response.insert(m_response.begin(), server.begin(), server.end());
@@ -199,12 +211,12 @@ void	Response::generateHeaders(Request & request)
 // It is called when Content-Type hasn't been set already (Error found or Content predefined)
 void	Response::setContentType(std::string & uri)
 {
-	std::cout<<"TEST de setContentType uri : "<<uri<<std::endl;
+	// std::cout<<"TEST de setContentType uri : "<<uri<<std::endl;
 	size_t	point = uri.find_last_of('.');
 	if (point != std::string::npos)
 	{
 		std::string extension = uri.substr(point + 1);
-		std::cout<<"TEST de setContentType : uri / extension : "<<uri<<" "<<extension<<std::endl;
+		// std::cout<<"TEST de setContentType : uri / extension : "<<uri<<" "<<extension<<std::endl;
 		if (extension == "html")
 			m_content_type = "Content-Type: text/html\r\n";
 		else if (extension == "jpeg" || extension == "jpg")
@@ -234,18 +246,22 @@ void	Response::generateErrorBody(Request & request)
 		std::ifstream file;
 		if (!m_error_page.empty())
 		{
-				file.open(m_error_page.c_str());
+			// PRINT_GREEN("TEST1")<<std::endl;
+			file.open(m_error_page.c_str());
 			if (!file)
 			{
+				// PRINT_GREEN("TEST2")<<std::endl;
 				m_error_page.clear();
 				generateErrorBody(request);
 			}
 		}
 		else
 		{
+			// PRINT_GREEN("TEST3")<<std::endl;
 			mapIntString::iterator it = m_error_file.find(request.m_error_code);
 			if (it == m_error_file.end())// Recherche du fichier d'erreur associe a ce code
 			{
+				// PRINT_GREEN("TEST4")<<std::endl;
 				PRINT_RED("Unknown error code : ")<<request.m_error_code<<std::endl;
 				return ;
 			}
@@ -253,10 +269,12 @@ void	Response::generateErrorBody(Request & request)
 		}
 		if (!file)
 		{
+			// PRINT_GREEN("TEST5")<<std::endl;
 			PRINT_RED("Probleme fichier d'erreur : ")<<strerror(errno)<<std::endl;// errno a supprimer ??!
 			return ;
 		}
 		//Remplissage de la reponse avec le fichier d'erreur
+		// PRINT_GREEN("TEST6")<<std::endl;
 		m_response = std::vector<unsigned char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 		m_body_size = m_response.size() + 2;
 		m_response.push_back('\r');
